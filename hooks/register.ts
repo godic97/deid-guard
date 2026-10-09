@@ -105,6 +105,23 @@ async function readPathFor($: EngineInterface, path: string): Promise<string> {
   return String(guarded.read_path)
 }
 
+/**
+ * Profile the data files a tool is about to touch, so the scrubber knows
+ * their values. An existing file that cannot be profiled (engine missing,
+ * unreadable file) refuses the call: its output could not be scrubbed.
+ */
+async function guardOrRefuse($: EngineInterface, paths: readonly string[]): Promise<string | undefined> {
+  for (const path of paths) {
+    if (isGeneratedPath(path)) continue
+    try {
+      await engine($, ['guard', path])
+    } catch (err) {
+      if (await $.fs.exists(path)) return failure(path, err)
+    }
+  }
+  return undefined
+}
+
 function failure(what: string, error: unknown): string {
   const reason = error && typeof error === 'object' && 'message' in error ? String(error.message) : 'unknown error'
   return `deid-guard: could not de-identify ${what}, so it was not read (${reason})`
@@ -149,11 +166,16 @@ export const register: Register = (on, options) => {
     return { sections: [...composed.sections, { id: 'deid-guard', text: SYSTEM_NOTE, scope: 'session' }] }
   })
 
-  // Keep every tool away from the re-identification state.
+  // Keep every tool away from the re-identification state, and profile the
+  // data files a tool names (Read and Bash have their own hooks below).
   on('tool.call', async ($, e, next) => {
     const input = e as unknown as Record<string, unknown>
     const paths = PATH_FIELDS.map(f => input[f]).filter((v): v is string => typeof v === 'string')
-    return paths.some(touchesState) ? { deny: DENY_STATE } : next(e)
+    if (paths.some(touchesState)) return { deny: DENY_STATE }
+    const tool = String(e.tool)
+    if (tool === 'Read' || tool === 'Bash' || tool.startsWith('mcp__deid-guard__')) return next(e)
+    const refused = await guardOrRefuse($, paths.filter(p => p !== input.command && isDataFile(p)))
+    return refused ? { deny: refused } : next(e)
   }).catch(() => ({ deny: DENY_STATE }))
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
@@ -168,16 +190,11 @@ export const register: Register = (on, options) => {
   // scrubber before the command prints any of them.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (RUNS_ENGINE.test(e.command)) return { deny: DENY_ENGINE }
-    for (const path of dataPathsIn(e.command)) {
-      if (isGeneratedPath(path)) continue
-      try {
-        await engine($, ['guard', path])
-      } catch {
-        // Not a readable data file (yet); its output is still scrubbed.
-      }
-    }
-    return next(e)
-  }).catch(($, e, next) => next(e))
+    const refused = await guardOrRefuse($, dataPathsIn(e.command))
+    return refused ? { deny: refused } : next(e)
+  }).catch(($, e, next) =>
+    dataPathsIn(e.command).length ? { deny: failure('the data files this command names', next.error) } : next(e),
+  )
 
   // A pseudonym in old_string stands for the original in the file on disk.
   // Only those pseudonyms are restored, and only when the restored text is
@@ -211,7 +228,7 @@ export const register: Register = (on, options) => {
       let answer = ''
       try {
         answer = await $.ui.ask(
-          `deid-guard: Claude wants to send these columns to the model without masking: ${columns}. Allow?`,
+          `deid-guard: Claude wants to send these columns of ${input.file} to the model without masking: ${columns}. Allow?`,
           { header: 'Unmask?', options: [KEEP_MASKED, SEND_UNMASKED] },
         )
       } catch {

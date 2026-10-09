@@ -85,6 +85,30 @@ describe('shell commands', () => {
     expect(calls.filter(c => c.cmd === 'guard').map(c => c.arg)).toEqual(['data/p.csv'])
   })
 
+  test('a command over an existing data file is refused when it cannot be profiled', async ($, on) => {
+    fakeEngine(on, { guard: () => ({ error: 'engine unavailable' }) })
+    on('fs.exists', () => ({ value: true }))
+    let ran = false
+    on('tool.call', { tool: 'Bash' }, () => {
+      ran = true
+      return { result: { stdout: '', stderr: '', interrupted: false } }
+    })
+    await $.tool.call({ tool: 'Bash', command: 'cat data/p.csv' })
+    expect(ran).toBe(false)
+  })
+
+  test('a command that creates a data file still runs', async ($, on) => {
+    fakeEngine(on, { guard: () => ({ error: 'FileNotFoundError' }) })
+    on('fs.exists', () => ({ value: false }))
+    let ran = false
+    on('tool.call', { tool: 'Bash' }, () => {
+      ran = true
+      return { result: { stdout: '', stderr: '', interrupted: false } }
+    })
+    await $.tool.call({ tool: 'Bash', command: 'python3 make.py > out.csv' })
+    expect(ran).toBe(true)
+  })
+
   test('a command that runs the engine directly is refused', async ($, on) => {
     fakeEngine(on, {})
     let ran = false
@@ -130,6 +154,20 @@ describe('conversation rows', () => {
     await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: '홍길동 내원' }] } })
     expect(JSON.stringify(stored)).not.toContain('홍길동')
     expect(JSON.stringify(stored)).toContain('withheld')
+  })
+})
+
+describe('other tools', () => {
+  test('a search over an existing data file that cannot be profiled is refused', async ($, on) => {
+    fakeEngine(on, { guard: () => ({ error: 'engine unavailable' }) })
+    on('fs.exists', () => ({ value: true }))
+    let ran = false
+    on('tool.call', { tool: 'Grep' } as never, () => {
+      ran = true
+      return { result: 'x' }
+    })
+    await $.tool.call({ tool: 'Grep', pattern: 'x', path: 'data/p.csv' } as never)
+    expect(ran).toBe(false)
   })
 })
 
@@ -227,6 +265,7 @@ describe('unmasking needs the user', () => {
       decisions: [{ column: 'patient_no', action: 'keep' }, { column: '나이', action: 'generalize' }],
     })
     expect(asked.join()).toContain('patient_no')
+    expect(asked.join()).toContain('a.csv')
     expect(calls.find(c => c.cmd === 'apply')?.input?.decisions).toEqual([{ column: '나이', action: 'generalize' }])
     expect(JSON.stringify(r)).toContain('not approved')
   })
