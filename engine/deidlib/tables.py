@@ -19,6 +19,10 @@ DATA_EXTENSIONS = (".csv", ".tsv", ".xlsx", ".json", ".jsonl")
 ENCODINGS = ("utf-8-sig", "cp949", "latin-1")
 
 
+class NotTabular(ValueError):
+    """A JSON file that is not a list of records, such as a config file."""
+
+
 @dataclass
 class Table:
     name: str
@@ -69,6 +73,8 @@ def _read_delimited(path: Path, delimiter: str) -> Table:
 
 
 def _records_table(name: str, records: list) -> Table:
+    if len(records) < 2 or not all(isinstance(r, dict) for r in records):
+        raise NotTabular(f"{name}: not a list of at least two records")
     columns: List[str] = []
     for rec in records:
         for k in rec if isinstance(rec, dict) else []:
@@ -81,8 +87,8 @@ def _records_table(name: str, records: list) -> Table:
 def _read_json(path: Path) -> Table:
     data = json.loads(_decode(path.read_bytes()))
     if isinstance(data, dict):
-        data = next((v for v in data.values() if isinstance(v, list)), [data])
-    return _records_table(path.stem, data)
+        data = next((v for v in data.values() if isinstance(v, list) and v and isinstance(v[0], dict)), [data])
+    return _records_table(path.stem, data if isinstance(data, list) else [data])
 
 
 def _read_jsonl(path: Path) -> Table:

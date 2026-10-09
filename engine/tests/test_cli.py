@@ -66,6 +66,33 @@ class CliTest(unittest.TestCase):
         scrubbed = self.run_cli("scrub", stdin={"texts": ["P-100101"]})["texts"]
         self.assertEqual(scrubbed, ["PATIENT_NO_000001"])
 
+    def test_scan_skips_config_json_and_leaves_its_values_alone(self):
+        (self.root / "package.json").write_text('{"name": "my-app", "version": "1.0.0"}')
+        out = self.run_cli("scan")
+        self.assertEqual(out["files"], ["patients.csv"])
+        self.assertEqual(self.run_cli("scrub", stdin={"texts": ["build my-app"]})["texts"], ["build my-app"])
+
+    def test_guard_reads_non_tabular_json_as_is(self):
+        (self.root / "cfg.json").write_text('{"name": "my-app"}')
+        out = self.run_cli("guard", "cfg.json")
+        self.assertEqual(out["status"], "not_data")
+        self.assertEqual(out["read_path"], str((self.root / "cfg.json").resolve()))
+
+    def test_scan_profiles_tables_before_hitting_the_file_limit(self):
+        from deidlib import cli
+        for i in range(5):
+            (self.root / f"a{i}.json").write_text('{"k": 1}')
+        old = cli.MAX_SCAN_FILES
+        cli.MAX_SCAN_FILES = 3
+        try:
+            from deidlib.store import Store
+            store = Store(self.root)
+            out = cli.scan(store, self.root)
+            store.close()
+        finally:
+            cli.MAX_SCAN_FILES = old
+        self.assertIn("patients.csv", out["files"])
+
 
 if __name__ == "__main__":
     unittest.main()

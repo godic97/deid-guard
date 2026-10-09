@@ -32,6 +32,8 @@ Every conversation row (prompts, tool results) ──session.append──▶ eng
 
 - Pseudonyms are stable. The same value gets the same token in every file, so joins and counts still work.
 - All state lives in the project's `.deid/` directory, which ignores itself in git. The model can read only `.deid/out` and `.deid/cards`.
+- A JSON file counts as data only when it holds a list of at least two records. Config files such as `package.json` are read as they are.
+- deid-guard profiles every data file in the project when a session starts and again before each shell command, so a file a command reaches through a glob or a script is known before its output is read. Unchanged files cost one `stat`.
 - Headers are shown as `col_N` when a file has no header row (its first row is data) or when headers look like person names (pivot tables).
 
 ## Requirements
@@ -80,7 +82,8 @@ To use another Python, change the `deid-guard.python` row in `/config` (default 
 
 - **Unstructured documents (txt, docx, pdf) are not handled.** Free-text cells inside tables are scrubbed only with the detectors and values already known from data files. A person's name typed into a prompt is sent as is unless it appears in a guarded data file.
 - Pasted images and PDFs that Claude reads natively are not inspected.
-- If one Bash command creates a data file and prints it right away, only the detectors apply to that output. The file is profiled from the next command on.
+- If one Bash command creates a data file and prints it right away, only the detectors apply to that output. The file is profiled before the next command.
+- In code repositories, JSON arrays of objects (test fixtures, for example) are profiled like any table, so a `name` field there may be masked until you clear the file.
 - The local transcript file (`~/.claude/projects/.../*.jsonl`) keeps original values in its screen-only fields (`toolUseResult`) and its input queue records (`queue-operation`). Those fields are not part of model requests.
 - If the Python engine cannot run, deid-guard refuses every Read, search and shell command that names an existing data file and withholds all tool output from the model. Prompts you type still go through unscrubbed, so you can ask Claude about the problem. The status line then shows `ENGINE UNAVAILABLE`.
 - deid-guard guards against accidental exposure, not against a model that sets out to defeat it. Bash runs arbitrary code with your permissions, so a command could still tamper with `.deid/` in ways the path checks do not recognise. Keep permission prompts on for Bash when you work with sensitive data.

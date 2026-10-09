@@ -29,7 +29,6 @@ const DENY_ENGINE =
   'deid-guard: the engine runs only through the plugin, so that unmasking always needs the user. ' +
   'Use mcp__deid-guard__apply.'
 const RUNS_ENGINE = /deid\.py|deidlib/
-const MENTIONS_DATA = /\.(csv|tsv|xlsx|jsonl?)\b/i
 // Rows a person typed. They pass even when the engine is down, so the user
 // can still talk to Claude about the problem.
 const TYPED_DOORS = new Set(['prompt', 'command'])
@@ -200,14 +199,13 @@ export const register: Register = (on, options) => {
   // scrubber before the command prints any of them.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (RUNS_ENGINE.test(e.command)) return { deny: DENY_ENGINE }
-    // A glob or a variable can name data files the path parser cannot see,
-    // so any mention of a data extension profiles new files first.
-    if (MENTIONS_DATA.test(e.command)) await engine($, ['scan'])
+    // Shell syntax can name a data file in ways no parser here sees (globs,
+    // variables, quoting, find -exec), so every command profiles new and
+    // changed data files first. Unchanged files cost the engine one stat.
+    await engine($, ['scan'])
     const refused = await guardOrRefuse($, dataPathsIn(e.command))
     return refused ? { deny: refused } : next(e)
-  }).catch(($, e, next) =>
-    dataPathsIn(e.command).length ? { deny: failure('the data files this command names', next.error) } : next(e),
-  )
+  }).catch(($, e, next) => ({ deny: failure('the data files in this project', next.error) }))
 
   // A pseudonym in old_string stands for the original in the file on disk.
   // Only those pseudonyms are restored, and only when the restored text is

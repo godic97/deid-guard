@@ -22,27 +22,35 @@ from .tables import is_data_file
 
 SKIP_DIRS = {".git", ".deid", ".claude", "node_modules", ".venv", "venv", "env", "__pycache__",
              "dist", "build", "site-packages", ".tox", ".mypy_cache", ".pytest_cache"}
-MAX_SCAN_FILES = 500
+MAX_SCAN_FILES = 2000
 MAX_SCAN_BYTES = 200 * 1024 * 1024
 
 
 def scan(store: Store, root: Path) -> dict:
-    """Profile every data file under root so their values are masked from the start."""
-    files, errors = [], []
+    """Profile every data file under root so their values are masked from the start.
+
+    Spreadsheets and CSV files go first, so a project full of JSON config
+    cannot push them past the file limit. Unchanged files cost one stat.
+    """
+    found = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
         for name in sorted(filenames):
             path = Path(dirpath) / name
-            if not is_data_file(name) or path.stat().st_size > MAX_SCAN_BYTES:
-                continue
-            if len(files) + len(errors) >= MAX_SCAN_FILES:
-                return {"files": files, "errors": errors, "truncated": True}
-            rel = str(path.relative_to(root))
-            try:
-                guard(store, root, path)
+            if is_data_file(name) and path.stat().st_size <= MAX_SCAN_BYTES:
+                found.append(path)
+    found.sort(key=lambda p: (p.suffix.lower() in (".json", ".jsonl"), str(p)))
+
+    files, errors = [], []
+    for i, path in enumerate(found):
+        if i >= MAX_SCAN_FILES:
+            return {"files": files, "errors": errors, "truncated": True}
+        rel = str(path.relative_to(root))
+        try:
+            if guard(store, root, path)["status"] != "not_data":
                 files.append(rel)
-            except Exception as e:
-                errors.append({"file": rel, "error": f"{type(e).__name__}: {e}"})
+        except Exception as e:
+            errors.append({"file": rel, "error": f"{type(e).__name__}: {e}"})
     return {"files": files, "errors": errors, "truncated": False}
 
 
@@ -94,6 +102,8 @@ def run(argv) -> dict:
             files = []
             for p in sorted((root / ".deid" / "state" / "files").glob("*.json")):
                 s = load_state(root, p.stem)
+                if s.get("not_data"):
+                    continue
                 files.append({
                     "file": s["file"],
                     "status": "pending" if s.get("decisions") is None else "decided",

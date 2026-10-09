@@ -47,6 +47,17 @@ describe('reading data files', () => {
     expect(calls.find(c => c.cmd === 'guard')?.arg).toBe('/p/data/a.csv')
   })
 
+  test('Read of a JSON file that is not a table reads the file itself', async ($, on) => {
+    fakeEngine(on, { guard: arg => ({ status: 'not_data', read_path: arg }) })
+    let readPath = ''
+    on('tool.call', { tool: 'Read' }, ($, e) => {
+      readPath = e.file_path
+      return { result: 'x' }
+    })
+    await $.tool.call({ tool: 'Read', file_path: '/p/package.json' })
+    expect(readPath).toBe('/p/package.json')
+  })
+
   test('Read of other files is untouched', async ($, on) => {
     const calls = fakeEngine(on, {})
     let readPath = ''
@@ -97,11 +108,10 @@ describe('shell commands', () => {
     expect(ran).toBe(false)
   })
 
-  test('a command with a data file pattern rescans the project first', async ($, on) => {
-    const calls = fakeEngine(on, { guard: () => ({ error: 'FileNotFoundError' }), scan: () => ({ files: [] }) })
-    on('fs.exists', () => ({ value: false }))
+  test('every command rescans the project first, whatever it names', async ($, on) => {
+    const calls = fakeEngine(on, { scan: () => ({ files: [] }) })
     on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
-    await $.tool.call({ tool: 'Bash', command: 'cat data/*.csv' })
+    await $.tool.call({ tool: 'Bash', command: 'find . -name "*sv" -exec cat {} +' })
     expect(calls.map(c => c.cmd)).toContain('scan')
   })
 

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from deidlib.tables import Table, is_data_file, read_tables, write_table
+from deidlib.tables import NotTabular, Table, is_data_file, read_tables, write_table
 from tests.xlsx_fixture import write_xlsx
 
 
@@ -46,6 +46,18 @@ class ReadTest(unittest.TestCase):
         (t,) = read_tables(p)
         self.assertEqual(t.columns, ["id", "name", "tags"])
         self.assertEqual(t.rows, [["1", "Kim", None], ["2", None, '["x"]']])
+
+    def test_config_json_is_not_tabular(self):
+        p = self.root / "package.json"
+        p.write_text(json.dumps({"name": "my-app", "version": "1.0.0", "scripts": {"test": "x"}}))
+        with self.assertRaises(NotTabular):
+            read_tables(p)
+
+    def test_single_record_json_is_not_tabular(self):
+        p = self.root / "a.json"
+        p.write_text(json.dumps([{"name": "x"}]))
+        with self.assertRaises(NotTabular):
+            read_tables(p)
 
     def test_jsonl(self):
         p = self.root / "a.jsonl"
