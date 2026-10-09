@@ -37,6 +37,9 @@ export function touchesState(text: string): boolean {
 
 export const hasToken = (text: string): boolean => TOKEN.test(text)
 
+/** The distinct pseudonym tokens in a text, in order of appearance. */
+export const tokensIn = (text: string): string[] => [...new Set(text.match(new RegExp(TOKEN.source, 'g')) ?? [])]
+
 export function dataPathsIn(command: string): string[] {
   const found: string[] = []
   for (const m of command.matchAll(PATH_IN_COMMAND)) {

@@ -83,6 +83,7 @@ To use another Python, change the `deid-guard.python` row in `/config` (default 
 - If one Bash command creates a data file and prints it right away, only the detectors apply to that output. The file is profiled from the next command on.
 - The local transcript file (`~/.claude/projects/.../*.jsonl`) keeps original values in its screen-only fields (`toolUseResult`) and its input queue records (`queue-operation`). Those fields are not part of model requests.
 - If the Python engine cannot run, reading data files is refused, but conversation rows are not scrubbed. The status line then shows `ENGINE UNAVAILABLE`.
+- deid-guard guards against accidental exposure, not against a model that sets out to defeat it. Bash runs arbitrary code with your permissions, so a command could still tamper with `.deid/` in ways the path checks do not recognise. Keep permission prompts on for Bash when you work with sensitive data.
 - Mods are an early-access Claude Code API and may change between releases.
 - This is a supplementary safeguard. It does not guarantee compliance with privacy law (PIPA, GDPR, HIPAA, ...).
 

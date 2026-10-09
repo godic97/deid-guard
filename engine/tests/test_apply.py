@@ -107,6 +107,22 @@ class ApplyTest(unittest.TestCase):
             self.assertTrue((self.root / rel).resolve().is_relative_to(out), rel)
         self.assertEqual(len(set(result["outputs"])), 2)
 
+    def test_kind_override_cannot_unmask_a_forced_column(self):
+        result = self.apply([{"column": "주민번호", "action": "keep", "kind": "zip"}])
+        _, rows = read_csv(self.root / result["outputs"][0])
+        self.assertEqual(rows[0][2], "RRN_000001")
+
+    def test_kind_override_cannot_change_how_a_pending_column_is_generalized(self):
+        with self.assertRaises(ApplyError):
+            self.apply([{"column": "성명", "action": "generalize", "kind": "address"}])
+
+    def test_kind_override_still_works_for_other_columns(self):
+        other = self.root / "v.csv"
+        other.write_text("bd\n1990-03-04\n")
+        result = self.apply(path=other, decisions=[{"column": "bd", "action": "generalize", "kind": "birthdate"}])
+        _, rows = read_csv(self.root / result["outputs"][0])
+        self.assertEqual(rows[0][0], "1990")
+
     def test_unknown_column_is_an_error(self):
         with self.assertRaises(ApplyError):
             self.apply([{"column": "nope", "action": "keep"}])

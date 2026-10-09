@@ -89,7 +89,10 @@ def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict],
         plan = []
         for c in cols:
             d = chosen.get((t.name, c["index"]), {})
-            kind = d.get("kind") or c["kind"]
+            # A column that is masked until decided keeps the kind the engine
+            # detected; overriding it could turn generalization into a leak.
+            guarded = c["status"] in ("forced", "pending")
+            kind = c["kind"] if guarded else (d.get("kind") or c["kind"])
             action, note = d.get("action", c["default_action"]), ""
             if kind in MANDATORY and action in ("keep", "generalize"):
                 action, note = "pseudonymize", f"{kind} is forced; pseudonymized instead of '{d['action']}'"

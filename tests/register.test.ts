@@ -85,6 +85,17 @@ describe('shell commands', () => {
     expect(calls.filter(c => c.cmd === 'guard').map(c => c.arg)).toEqual(['data/p.csv'])
   })
 
+  test('a command that runs the engine directly is refused', async ($, on) => {
+    fakeEngine(on, {})
+    let ran = false
+    on('tool.call', { tool: 'Bash' }, () => {
+      ran = true
+      return { result: { stdout: '', stderr: '', interrupted: false } }
+    })
+    await $.tool.call({ tool: 'Bash', command: 'echo {} | python3 ~/x/deid-guard/engine/deid.py apply a.csv --root .' })
+    expect(ran).toBe(false)
+  })
+
   test('a command that touches the engine state is refused', async ($, on) => {
     fakeEngine(on, {})
     let ran = false
@@ -134,6 +145,35 @@ describe('editing', () => {
     await $.tool.call({ tool: 'Edit', file_path: '/p/c.yml', old_string: 'name: NAME_000001', new_string: 'name: NAME_000001 (kr)' })
     expect(edit.old_string).toBe('name: 홍길동')
     expect(edit.new_string).toBe('name: 홍길동 (kr)')
+  })
+
+  test('tokens that only new_string names are not restored', async ($, on) => {
+    fakeEngine(on, {
+      restore: (_, input) => ({
+        texts: (input?.texts ?? []).map(t => t.replace('NAME_000001', '홍길동').replace('ID_000007', '1234')),
+      }),
+    })
+    on('fs.read', () => ({ value: 'name: 홍길동\n' }))
+    let edit: { old_string?: string; new_string?: string } = {}
+    on('tool.call', { tool: 'Edit' }, ($, e) => {
+      edit = e
+      return { result: 'ok' }
+    })
+    await $.tool.call({ tool: 'Edit', file_path: '/p/c.yml', old_string: 'name: NAME_000001', new_string: 'name: NAME_000001 ID_000007' })
+    expect(edit.old_string).toBe('name: 홍길동')
+    expect(edit.new_string).toBe('name: 홍길동 ID_000007')
+  })
+
+  test('nothing is restored when the restored text is not in the file', async ($, on) => {
+    fakeEngine(on, { restore: (_, input) => ({ texts: (input?.texts ?? []).map(t => t.replace('ID_000007', '1234')) }) })
+    on('fs.read', () => ({ value: 'other\n' }))
+    let edit: { old_string?: string; new_string?: string } = {}
+    on('tool.call', { tool: 'Edit' }, ($, e) => {
+      edit = e
+      return { result: 'ok' }
+    })
+    await $.tool.call({ tool: 'Edit', file_path: '/p/c.yml', old_string: 'x ID_000007', new_string: 'y ID_000007' })
+    expect(edit.new_string).toBe('y ID_000007')
   })
 
   test('tokens are kept when the file holds them literally', async ($, on) => {
@@ -189,6 +229,21 @@ describe('unmasking needs the user', () => {
     expect(asked.join()).toContain('patient_no')
     expect(calls.find(c => c.cmd === 'apply')?.input?.decisions).toEqual([{ column: '나이', action: 'generalize' }])
     expect(JSON.stringify(r)).toContain('not approved')
+  })
+
+  test('a declined unmask drops every keep, whatever name it used', async ($, on) => {
+    const calls = fakeEngine(on, { plan, apply: () => ({ summary: 'applied', outputs: [] }) })
+    answerDialog(on, 'Keep masked')
+    await $.tool.call({
+      tool: 'mcp__deid-guard__apply',
+      file: 'a.csv',
+      decisions: [
+        { column: '#2', action: 'keep' },
+        { column: 'patient_no', action: 'keep' },
+        { column: '나이', action: 'generalize' },
+      ],
+    })
+    expect(calls.find(c => c.cmd === 'apply')?.input?.decisions).toEqual([{ column: '나이', action: 'generalize' }])
   })
 
   test('an approved unmask is applied as asked', async ($, on) => {

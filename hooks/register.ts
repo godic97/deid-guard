@@ -8,7 +8,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import {
   type Content,
   dataPathsIn,
-  hasToken,
+  tokensIn,
   isDataFile,
   isGeneratedPath,
   textsOf,
@@ -25,6 +25,10 @@ const SEND_UNMASKED = 'Send unmasked'
 const DENY_STATE =
   'deid-guard: .deid/ holds the re-identification state and is off limits. ' +
   'Read a data file directly to get its profile or its de-identified copy.'
+const DENY_ENGINE =
+  'deid-guard: the engine runs only through the plugin, so that unmasking always needs the user. ' +
+  'Use mcp__deid-guard__apply.'
+const RUNS_ENGINE = /deid\.py|deidlib/
 const WITHHELD = '[deid-guard: content withheld because the de-identification engine failed]'
 // Rows the model never reads, or wrote itself.
 const SKIP_DOORS = new Set(['response', 'notice'])
@@ -163,6 +167,7 @@ export const register: Register = (on, options) => {
   // Profile the data files a command names, so their values are known to the
   // scrubber before the command prints any of them.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (RUNS_ENGINE.test(e.command)) return { deny: DENY_ENGINE }
     for (const path of dataPathsIn(e.command)) {
       if (isGeneratedPath(path)) continue
       try {
@@ -175,12 +180,21 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   // A pseudonym in old_string stands for the original in the file on disk.
+  // Only those pseudonyms are restored, and only when the restored text is
+  // really in the file, so an edit cannot write other originals to disk.
   on('tool.call', { tool: 'Edit' }, async ($, e, next) => {
-    if (!hasToken(e.old_string) && !hasToken(e.new_string)) return next(e)
+    const tokens = tokensIn(e.old_string)
+    if (!tokens.length) return next(e)
     const text = await $.fs.read(e.file_path)
     if (typeof text !== 'string' || text.includes(e.old_string)) return next(e)
-    const restored = await engine($, ['restore'], { texts: [e.old_string, e.new_string] })
-    return next({ ...e, old_string: restored.texts[0], new_string: restored.texts[1] })
+    const restored = await engine($, ['restore'], { texts: [e.old_string, ...tokens] })
+    const [oldString, ...originals] = restored.texts as string[]
+    if (!text.includes(oldString)) return next(e)
+    let newString = e.new_string
+    tokens.forEach((token, i) => {
+      newString = newString.split(token).join(originals[i])
+    })
+    return next({ ...e, old_string: oldString, new_string: newString })
   }).catch(($, e, next) => next(e))
 
   // Keeping a pending column sends its raw values to the model, so only the
@@ -204,7 +218,9 @@ export const register: Register = (on, options) => {
         // No one could answer: the columns stay masked.
       }
       if (answer !== SEND_UNMASKED) {
-        decisions = decisions.filter(d => !(d.action === 'keep' && unmasks.includes(d.column)))
+        // Drop every keep, so no other spelling of a column (#2) slips through.
+        // Keep is the default for unguarded columns, so nothing else changes.
+        decisions = decisions.filter(d => d.action !== 'keep')
         note = `\n\nUnmasking ${columns} was not approved by the user, so those columns keep their default treatment.`
       }
     }
