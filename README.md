@@ -1,81 +1,81 @@
 # deid-guard
 
-Claude Code 플러그인(mod). 표 형식 데이터 파일(CSV·TSV·XLSX·JSON·JSONL)의 개인정보를 **모델에 보내기 전에 로컬에서 비식별화**한다. 한국어·영어 지원.
+A Claude Code mod that de-identifies personal data in tabular files (CSV, TSV, XLSX, JSON, JSONL) **locally, before anything reaches the model**. It supports Korean and English data.
 
-> A Claude Code mod that de-identifies personal data in tabular files locally, before anything reaches the model. Korean and English. Column-level decisions are made by Claude from column names and shapes only, confirmed by the user, and applied by a local Python engine.
+Claude decides which columns identify a person from column names and value shapes only. The user confirms. A local Python engine applies the decisions.
 
-## 동작 방식
+## How it works
 
 ```
-Claude ──Read data.csv──▶ mod ──guard──▶ 엔진(Python, 로컬)
-   ◀── 프로파일 카드(컬럼명·타입·형식 패턴, 값 없음)
-Claude ──AskUserQuestion──▶ 사용자: "patient_no, 방문일도 비식별화할까요?"
-Claude ──mcp__deid-guard__apply──▶ 엔진: .deid/out/ 에 비식별 사본 생성
-Claude ──Read data.csv──▶ 비식별 사본
-모든 대화 행(프롬프트·도구 결과)──session.append──▶ 엔진 scrub ──▶ 모델
+Claude ──Read data.csv──▶ mod ──guard──▶ engine (Python, local)
+       ◀── profile card (column names, types, shapes; no values)
+Claude ──AskUserQuestion──▶ user: "De-identify patient_no and visit_date too?"
+Claude ──mcp__deid-guard__apply──▶ engine writes a de-identified copy to .deid/out/
+Claude ──Read data.csv──▶ de-identified copy
+Every conversation row (prompts, tool results) ──session.append──▶ engine scrub ──▶ model
 ```
 
-1. **처음 읽을 때**: 원문 대신 프로파일 카드를 돌려준다. 컬럼명, 타입, 고유값 비율, 형식 패턴(`A-######`), 자동 탐지 결과만 담는다. 셀 값은 없다.
-2. **판단과 확인**: Claude가 컬럼명을 보고 식별자(환자번호, 사번, 회원ID 등)를 추론하고 `AskUserQuestion`으로 처리 방식을 묻는다.
-3. **적용**: `mcp__deid-guard__apply`가 `.deid/out/`에 비식별 사본을 만든다. 이후 원본을 읽으면 사본이 나온다.
-4. **안전망**: 모델이 읽는 모든 행(프롬프트, Read·Bash·Grep 결과, 첨부)을 엔진이 다시 검사한다. 알려진 원값은 같은 가명으로, 탐지 패턴은 토큰으로 바뀐다.
+1. **First read.** Claude gets a profile card instead of the file. The card lists column names, types, unique ratios, value shapes (`A-######`) and what the detectors found. It contains no cell values.
+2. **Judge and confirm.** Claude infers identifier columns (patient numbers, employee IDs, member IDs, ...) from the card and asks the user how to treat them with `AskUserQuestion`.
+3. **Apply.** `mcp__deid-guard__apply` writes a de-identified copy under `.deid/out/`. From then on, reading the original file returns the copy.
+4. **Safety net.** The engine scrubs every row the model reads: prompts, Read/Bash/Grep results and attachments. Known original values become their pseudonyms, and detected patterns become tokens.
 
-### 처리 방식
+### Treatment by column kind
 
-| 구분 | 예 | 기본 | 결정 전 |
+| Kind | Examples | Default | Before a decision |
 |---|---|---|---|
-| 확정 개인정보 (강제) | 주민·외국인등록번호, 전화, 이메일, 카드(Luhn), 운전면허, 여권·계좌(문맥), SSN | 가명화. 해제 불가 | 가림 |
-| 직접 식별자 | 이름, 환자번호·ID류 | 가명화 `PATIENT_000123` | 가림 |
-| 강한 준식별자 | 생년월일, 주소 | 범주화 (출생연도, 시·군·구) | 범주화된 값으로 가림 |
-| 준식별자 | 우편번호, 나이, 성별, 날짜 | 우편번호만 앞 3자리, 나머지 유지 | 그대로 |
-| 자유텍스트 | 메모, 소견 | 유지 + 셀 안 탐지·가명 치환 | 탐지만 |
+| Mandatory PII (forced) | Korean resident/foreigner registration number, phone, email, card number (Luhn), driver's license, passport and bank account (with context words), US SSN | Pseudonymize; cannot be kept | Masked |
+| Direct identifier | Name, patient number, any ID column | Pseudonymize (`PATIENT_000123`) | Masked |
+| Strong quasi-identifier | Birth date, address | Generalize (birth year; city/district) | Masked with the generalized value |
+| Quasi-identifier | ZIP code, age, sex, dates | ZIP to first 3 digits; others kept | Unchanged |
+| Free text | Memo, clinical notes | Keep; detectors and known values replaced inside cells | Detectors only |
 
-- 가명은 일관된다. 같은 값은 파일이 달라도 같은 토큰이 되므로 조인과 집계가 유지된다.
-- 모든 상태는 프로젝트의 `.deid/`(자동 gitignore)에 있다. 모델은 `.deid/out`, `.deid/cards` 외에는 접근할 수 없다.
-- 헤더 없는 파일(첫 행이 데이터)이나 헤더에 사람 이름이 있는 피벗 표는 헤더를 `col_N`으로 가린다.
+- Pseudonyms are stable. The same value gets the same token in every file, so joins and counts still work.
+- All state lives in the project's `.deid/` directory, which ignores itself in git. The model can read only `.deid/out` and `.deid/cards`.
+- Headers are shown as `col_N` when a file has no header row (its first row is data) or when headers look like person names (pivot tables).
 
-## 요구 사항
+## Requirements
 
-- Claude Code **2.1.290 이상** (mods 사용, `prompt.mention`). 2.1.295에서 테스트했다.
-- Python **3.9 이상**. 표준 라이브러리만 쓰므로 pip 설치가 필요 없다.
-- 탐지와 변환은 모두 로컬에서 실행된다. 외부 API나 LLM을 호출하지 않는다.
+- Claude Code **2.1.290 or later** (mods and `prompt.mention`). Tested with 2.1.295.
+- Python **3.9 or later**. The engine uses only the standard library, so nothing needs `pip install`.
+- Detection and transformation run locally. No external API or LLM is called.
 
-## 설치
+## Install
 
 ```bash
 git clone git@github.com:godic97/deid-guard.git
 claude --plugin-dir /path/to/deid-guard
 ```
 
-항상 켜 두려면 `~/.claude/settings.json`에 다음을 넣는다.
+To load it in every session, add this to `~/.claude/settings.json`:
 
 ```json
 { "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/path/to/deid-guard" } }
 ```
 
-Python 경로는 `/config`의 `deid-guard.python` 항목(기본 `python3`)으로 바꿀 수 있다.
+To use another Python, change the `deid-guard.python` row in `/config` (default `python3`).
 
-## 명령
+## Commands
 
-- `/deid-status`: 보호 중인 데이터 파일과 사본 경로를 보여준다.
-- `/deid-reveal PATIENT_NO_000012`: 원값을 **로컬 토스트로만** 보여준다. 모델에는 가지 않는다.
+- `/deid-status`: list the data files deid-guard guards and their copies.
+- `/deid-reveal PATIENT_NO_000012`: show the original value in a **local toast only**. It is never sent to the model.
 
-## 한계 (v0.1)
+## Limitations (v0.1)
 
-- **비정형 문서(txt, docx, pdf) 본문은 다루지 않는다.** 표 안의 자유텍스트 셀은 패턴 탐지와 이미 알려진 값으로만 처리한다. 데이터 파일에 없는 사람 이름을 프롬프트에 직접 쓰면 그대로 전달된다.
-- 이미지와 PDF를 붙여넣거나 네이티브로 읽는 경우는 막지 않는다.
-- 한 Bash 명령 안에서 새로 만든 데이터 파일을 곧바로 출력하면, 그 파일의 이름·ID 값은 패턴 탐지로만 걸러진다. 다음 명령부터는 프로파일된다.
-- 로컬 대화 기록 파일(`~/.claude/projects/...jsonl`)에는 화면 표시용 필드(`toolUseResult`)와 입력 대기열 기록(`queue-operation`)에 원값이 남는다. 이 필드는 모델 요청에 실리지 않는다.
-- 엔진(Python)을 실행할 수 없으면 데이터 파일 읽기를 거부하지만, 대화 행 검사는 하지 못한다. 상태 줄에 `ENGINE UNAVAILABLE`이 표시된다.
-- mods는 Claude Code의 early access API라 버전에 따라 바뀔 수 있다.
-- 이 도구는 보조 방어 수단이다. 개인정보보호법 등 규제 준수를 보장하지 않는다.
+- **Unstructured documents (txt, docx, pdf) are not handled.** Free-text cells inside tables are scrubbed only with the detectors and values already known from data files. A person's name typed into a prompt is sent as is unless it appears in a guarded data file.
+- Pasted images and PDFs that Claude reads natively are not inspected.
+- If one Bash command creates a data file and prints it right away, only the detectors apply to that output. The file is profiled from the next command on.
+- The local transcript file (`~/.claude/projects/.../*.jsonl`) keeps original values in its screen-only fields (`toolUseResult`) and its input queue records (`queue-operation`). Those fields are not part of model requests.
+- If the Python engine cannot run, reading data files is refused, but conversation rows are not scrubbed. The status line then shows `ENGINE UNAVAILABLE`.
+- Mods are an early-access Claude Code API and may change between releases.
+- This is a supplementary safeguard. It does not guarantee compliance with privacy law (PIPA, GDPR, HIPAA, ...).
 
-## 개발
+## Development
 
 ```bash
-cd engine && python3 -m unittest discover -s tests -t .   # 엔진 테스트
-claude plugin test .                                        # mod 테스트
-claude plugin validate .                                    # 정적 검사
+cd engine && python3 -m unittest discover -s tests -t .   # engine tests
+claude plugin test .                                        # mod tests
+claude plugin validate .                                    # static checks
 ```
 
-테스트 데이터는 모두 합성 값이다(`engine/tests/fixtures.py`).
+All test data is synthetic (`engine/tests/fixtures.py`).
