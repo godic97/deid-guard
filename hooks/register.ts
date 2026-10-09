@@ -82,7 +82,7 @@ let engineReady = true
 async function engine($: EngineInterface, args: string[], input?: unknown): Promise<EngineResult> {
   const root = await $.session.root()
   const init = input === undefined ? { timeoutMs: 600_000 } : { timeoutMs: 600_000, stdin: JSON.stringify(input) }
-  const ran = await $.process.run([python, `${$.plugin.root}/engine/deid.py`, ...args, '--root', root], init)
+  const ran = await $.process.run([python, `${$.plugin.root}/src/deid.py`, ...args, '--root', root], init)
   let out: EngineResult
   try {
     out = JSON.parse(ran.stdout)

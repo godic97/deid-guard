@@ -60,6 +60,28 @@ class EnglishDetectorTest(unittest.TestCase):
         self.assertEqual(kinds("card 4111 1111 1111 1112"), [])
 
 
+class CardBoundaryTest(unittest.TestCase):
+    def test_shortest_card_is_thirteen_digits(self):
+        self.assertEqual(kinds("4222000000006"), [("CARD", "4222000000006")])
+
+    def test_longest_card_is_nineteen_digits(self):
+        self.assertEqual(kinds("6011 0000 0000 0000001"), [("CARD", "6011 0000 0000 0000001")])
+
+    def test_a_number_of_one_repeated_digit_is_not_a_card(self):
+        self.assertEqual(kinds("0000 0000 0000 0000"), [])
+
+
+class ContextNormalizationTest(unittest.TestCase):
+    def test_passport_value_stops_at_the_number_and_normalizes_to_upper_case(self):
+        (m,) = find_all("여권번호: m12345678 발급")
+        self.assertEqual((m.kind, m.value, m.norm), ("PASSPORT", "m12345678", "M12345678"))
+        self.assertEqual((m.start, m.end), (6, 15))
+
+    def test_account_normalizes_to_digits(self):
+        (m,) = find_all("계좌 110-123-456789 입금")
+        self.assertEqual((m.kind, m.value, m.norm), ("ACCOUNT", "110-123-456789", "110123456789"))
+
+
 class NormalizationTest(unittest.TestCase):
     def test_same_phone_in_two_formats_normalizes_equal(self):
         a, b = find_all("010-1234-5678 01012345678")

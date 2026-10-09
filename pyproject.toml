@@ -1,0 +1,8 @@
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["src/tests"]
+
+[tool.mutmut]
+source_paths = ["src/deidlib"]
+also_copy = ["src/deid.py", "src/tests"]
+pytest_add_cli_args_test_selection = ["src/tests"]

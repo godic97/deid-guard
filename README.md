@@ -70,7 +70,7 @@ To use another Python, change the `deid-guard.python` row in `/config` (default 
 
 ## What deid-guard runs and sends
 
-- It runs one local program: `python3 <plugin>/engine/deid.py`, started by the mod for each check.
+- It runs one local program: `python3 <plugin>/src/deid.py`, started by the mod for each check.
 - It reads the data files Claude touches and writes only under `.deid/` in your project: the mapping database, profile cards and de-identified copies.
 - It makes no network requests and sends nothing anywhere. The only text that leaves your machine is what Claude Code already sends to the model, after deid-guard has scrubbed it.
 - It adds one tool (`mcp__deid-guard__apply`), two commands, a short system prompt section that explains the workflow to Claude, and a status line entry.
@@ -95,12 +95,19 @@ To use another Python, change the `deid-guard.python` row in `/config` (default 
 ## Development
 
 ```bash
-cd engine && python3 -m unittest discover -s tests -t .   # engine tests
+cd src && python3 -m unittest discover -s tests -t .      # engine tests, standard library only
 claude plugin test .                                        # mod tests
 claude plugin validate .                                    # static checks
 ```
 
-All test data is synthetic (`engine/tests/fixtures.py`).
+Mutation testing uses [mutmut](https://github.com/boxed/mutmut) 3 through [mutation-gate](https://github.com/godic97/mutation-gate), with the settings in `pyproject.toml`:
+
+```bash
+uv venv .venv && uv pip install --python .venv/bin/python pytest mutmut
+mutation-gate test src/deidlib
+```
+
+All test data is synthetic (`src/tests/fixtures.py`).
 
 ## License
 

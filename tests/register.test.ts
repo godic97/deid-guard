@@ -134,7 +134,7 @@ describe('shell commands', () => {
       ran = true
       return { result: { stdout: '', stderr: '', interrupted: false } }
     })
-    await $.tool.call({ tool: 'Bash', command: 'echo {} | python3 ~/x/deid-guard/engine/deid.py apply a.csv --root .' })
+    await $.tool.call({ tool: 'Bash', command: 'echo {} | python3 ~/x/deid-guard/src/deid.py apply a.csv --root .' })
     expect(ran).toBe(false)
   })
 

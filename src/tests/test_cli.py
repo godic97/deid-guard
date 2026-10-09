@@ -1,10 +1,14 @@
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
+from deidlib import cli
 from tests.fixtures import write_patients
 
 CLI = Path(__file__).resolve().parents[1] / "deid.py"
@@ -20,17 +24,25 @@ class CliTest(unittest.TestCase):
         self.dir.cleanup()
 
     def run_cli(self, *args, stdin=None, ok=True):
-        p = subprocess.run(
-            [sys.executable, str(CLI), *args, "--root", str(self.root)],
-            input=json.dumps(stdin) if stdin is not None else None,
-            capture_output=True, text=True,
-        )
-        if ok:
-            self.assertEqual(p.returncode, 0, p.stderr + p.stdout)
-        return json.loads(p.stdout)
+        """Run the CLI in this process, so mutation testing can trace it."""
+        out = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(stdin) if stdin is not None else "")), \
+                redirect_stdout(out):
+            code = cli.main([*args, "--root", str(self.root)])
+        self.assertEqual(code, 0 if ok else 1, out.getvalue())
+        return json.loads(out.getvalue())
+
+    def test_entry_point_runs_as_a_script(self):
+        p = subprocess.run([sys.executable, str(CLI), "ping", "--root", str(self.root)],
+                           capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(json.loads(p.stdout)["ok"])
 
     def test_ping(self):
-        self.assertTrue(self.run_cli("ping")["ok"])
+        out = self.run_cli("ping")
+        self.assertEqual(out["ok"], True)
+        self.assertEqual(out["version"], __import__("deidlib").__version__)
+        self.assertEqual(out["python"], sys.version.split()[0])
 
     def test_guard_then_apply_then_guard(self):
         self.assertEqual(self.run_cli("guard", str(self.data))["status"], "pending")

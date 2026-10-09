@@ -4,3 +4,5 @@ __pycache__/
 .claude-plugin/types/
 tsconfig.json
 .DS_Store
+.venv/
+mutants/
