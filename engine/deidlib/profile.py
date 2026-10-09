@@ -74,7 +74,16 @@ def register_json_leaves(store: Store, fid: str, path: Path) -> int:
     key (name, id) under a personal one ({"patient": {"name": ...}}), or
     when it is a Korean person name under a "name" key.
     """
-    data = json.loads(path.read_bytes().decode("utf-8-sig", errors="replace"))
+    text = path.read_bytes().decode("utf-8-sig", errors="replace")
+    if path.suffix.lower() == ".jsonl":
+        data = []
+        for line in text.splitlines():
+            try:
+                data.append(json.loads(line))
+            except ValueError:
+                continue
+    else:
+        data = json.loads(text)
     pairs: Dict[str, str] = {}
 
     def walk(node, key: str, personal_above: bool) -> None:
@@ -393,6 +402,9 @@ def profile_file(store: Store, root: Path, path: Path) -> Dict:
             "name": table.name, "rows": len(table.rows), "columns": cols,
             "header_masked": header_masked, "masked_headers": masked,
         })
+    if path.suffix.lower() in (".json", ".jsonl"):
+        # Personal fields outside the tables, such as {"owner": {"성명": ...}}.
+        register_json_leaves(store, fid, path)
     store.commit()
     result = {"file": rel, "file_id": fid, "fingerprint": fingerprint(path), "tables": tables}
     result["card"] = render_card(rel, tables)

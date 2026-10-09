@@ -125,6 +125,13 @@ class ApplyTest(unittest.TestCase):
         _, rows = read_csv(self.root / result["outputs"][0])
         self.assertEqual(rows[0][0], "1990")
 
+    def test_json_with_several_tables_gets_one_copy_per_table(self):
+        p = self.root / "multi.json"
+        p.write_text('{"visits": [{"id": "V-1"}, {"id": "V-2"}], "staff": [{"성명": "윤서하"}, {"성명": "한지우"}]}')
+        result = self.apply(path=p)
+        self.assertEqual(len(result["outputs"]), 2)
+        self.assertTrue(result["read_path"].endswith("multi.json.md"))
+
     def test_unknown_column_is_an_error(self):
         with self.assertRaises(ApplyError):
             self.apply([{"column": "nope", "action": "keep"}])
@@ -180,6 +187,15 @@ class GuardTest(unittest.TestCase):
         apply_decisions(self.store, self.root, self.path, [])
         self.assertEqual(self.store.lookup("홍길동"), "NAME_000020")
 
+    def test_keep_on_a_column_that_no_longer_looks_pending_keeps_old_masks(self):
+        guard(self.store, self.root, self.path)
+        self.assertIsNotNone(self.store.lookup("P-100101"))
+        lines = self.path.read_bytes().decode("utf-8").splitlines()
+        diluted = [lines[0]] + [l.replace(l.split(",")[0], "P-100101", 1) for l in lines[1:]]
+        self.path.write_bytes("\n".join(diluted).encode("utf-8"))
+        apply_decisions(self.store, self.root, self.path, [{"column": "patient_no", "action": "keep"}])
+        self.assertIsNotNone(self.store.lookup("P-100101"))
+
     def test_content_change_with_restored_mtime_is_noticed(self):
         import os
         guard(self.store, self.root, self.path)
@@ -189,6 +205,12 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(os.stat(self.path).st_size, st.st_size)
         guard(self.store, self.root, self.path)
         self.assertIsNotNone(self.store.lookup("Q-100101"))
+
+    def test_personal_fields_beside_tables_in_json_are_masked(self):
+        p = self.root / "mixed.json"
+        p.write_text('{"rows": [{"a": 1}, {"a": 2}], "owner": {"성명": "윤서하", "phone": "010-7777-8888"}}')
+        guard(self.store, self.root, p)
+        self.assertIsNotNone(self.store.lookup("윤서하"))
 
     def test_personal_fields_in_non_tabular_json_are_masked(self):
         p = self.root / "one.json"

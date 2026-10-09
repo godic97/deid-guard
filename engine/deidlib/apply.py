@@ -67,7 +67,7 @@ def _safe_name(name: str, taken: set) -> str:
 
 def _out_paths(root: Path, rel: str, tables: List[Table]) -> Dict:
     base = Path(root) / ".deid" / "out" / rel
-    if rel.lower().endswith(".xlsx"):
+    if rel.lower().endswith(".xlsx") or len(tables) > 1:
         taken: set = set()
         sheets = {t.name: base.parent / (base.name + ".sheets") / f"{_safe_name(t.name, taken)}.csv" for t in tables}
         return {"sheets": sheets, "read": base.parent / (base.name + ".md")}
@@ -125,7 +125,9 @@ def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict],
         for p in plan:
             i, kind, action = p["col"]["index"] - 1, p["kind"], p["action"]
             key = f"{t.name}\x00{p['col']['name']}"
-            if action == "keep" and kind not in MANDATORY:
+            # Exactly the case the plugin's approval dialog covers: a column
+            # that is pending now. Any other keep leaves old masks in place.
+            if action == "keep" and p["col"]["status"] == "pending":
                 store.forget_column(fid, key)
             pairs = {}
             for r in t.rows:
@@ -169,7 +171,7 @@ def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict],
     out_rel = [str(p.relative_to(root)) for p in outputs["sheets"].values()]
     if outputs["read"] not in outputs["sheets"].values():
         outputs["read"].write_text(
-            f"# deid-guard: de-identified copy of `{rel}`\n\nOne CSV per sheet:\n\n"
+            f"# deid-guard: de-identified copy of `{rel}`\n\nOne CSV per sheet or table:\n\n"
             + "\n".join(f"- `{p}`" for p in out_rel) + "\n",
             encoding="utf-8",
         )

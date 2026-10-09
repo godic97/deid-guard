@@ -80,6 +80,16 @@ class ReadTest(unittest.TestCase):
         self.assertEqual(t.columns, ["col_1", "col_2"])
         self.assertEqual(t.rows, [["P-1", "Kim"], ["P-2", "Lee"]])
 
+    def test_every_table_in_a_json_object_is_read(self):
+        p = self.root / "a.json"
+        p.write_text(json.dumps({
+            "meta": {"v": 1},
+            "data": [["x", 1], ["y", 2]],
+            "patients": [{"name": "Kim"}, {"name": "Lee"}],
+        }))
+        names = [t.name for t in read_tables(p)]
+        self.assertEqual(names, ["data", "patients"])
+
     def test_jsonl(self):
         p = self.root / "a.jsonl"
         p.write_text('{"id": "a"}\n\n{"id": "b"}\n')

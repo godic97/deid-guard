@@ -92,21 +92,37 @@ def _rows_table(name: str, rows: list, columns: Optional[list] = None) -> Table:
     return Table(name, [str(c) for c in columns], _pad(cells, len(columns)))
 
 
-def _read_json(path: Path) -> Table:
+def _json_table(name: str, value) -> Optional[Table]:
+    """A table for one JSON value, or None when the value is not one."""
+    if isinstance(value, dict) and set(value) <= {"columns", "index", "data"} \
+            and isinstance(value.get("data"), list) and value["data"] \
+            and all(isinstance(r, list) for r in value["data"]):
+        # pandas orient="split"
+        cols = value.get("columns") if isinstance(value.get("columns"), list) else None
+        return _rows_table(name, value["data"], cols)
+    if isinstance(value, list) and len(value) >= 2 and all(isinstance(r, list) for r in value):
+        return _rows_table(name, value)  # pandas orient="values"
+    if isinstance(value, list) and len(value) >= 2 and all(isinstance(r, dict) for r in value):
+        return _records_table(name, value)
+    if isinstance(value, dict) and len(value) >= 2 and all(isinstance(v, dict) for v in value.values()):
+        return _records_table(name, [{"_key": k, **v} for k, v in value.items()])  # keyed by ID
+    return None
+
+
+def _read_json(path: Path) -> List[Table]:
     data = json.loads(_decode(path.read_bytes()))
-    # Rows as lists: pandas orient="split" ({"columns", "data"}) and orient="values".
-    if isinstance(data, dict) and isinstance(data.get("data"), list) and data["data"] \
-            and all(isinstance(r, list) for r in data["data"]):
-        cols = data.get("columns") if isinstance(data.get("columns"), list) else None
-        return _rows_table(path.stem, data["data"], cols)
-    if isinstance(data, list) and len(data) >= 2 and all(isinstance(r, list) for r in data):
-        return _rows_table(path.stem, data)
-    if isinstance(data, dict) and len(data) >= 2 and all(isinstance(v, dict) for v in data.values()):
-        # Records keyed by an ID: {"P-1": {...}, "P-2": {...}}
-        data = [{"_key": k, **v} for k, v in data.items()]
-    elif isinstance(data, dict):
-        data = next((v for v in data.values() if isinstance(v, list) and v and isinstance(v[0], dict)), [data])
-    return _records_table(path.stem, data if isinstance(data, list) else [data])
+    whole = _json_table(path.stem, data)
+    if whole is not None:
+        return [whole]
+    tables = []
+    if isinstance(data, dict):
+        for key, value in data.items():
+            t = _json_table(str(key), value)
+            if t is not None:
+                tables.append(t)
+    if not tables:
+        raise NotTabular(f"{path.name}: no list of records in it")
+    return tables
 
 
 def _read_jsonl(path: Path) -> Table:
@@ -217,7 +233,7 @@ def read_tables(path) -> List[Table]:
     if ext == ".tsv":
         return [_read_delimited(path, "\t")]
     if ext == ".json":
-        return [_read_json(path)]
+        return _read_json(path)
     if ext == ".jsonl":
         return [_read_jsonl(path)]
     if ext == ".xlsx":
