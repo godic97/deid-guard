@@ -95,6 +95,8 @@ class ApplyTest(unittest.TestCase):
                                  [{"column": "patient_no", "action": "keep"}, {"column": "진단", "action": "keep"}],
                                  dry_run=True)
         self.assertEqual(result["unmasks"], ["patient_no"])
+        self.assertEqual(result["columns"], ["patient_no"])
+        self.assertEqual(result["file"], "data/patients.csv")
         self.assertFalse((self.root / ".deid" / "out").exists())
 
     def test_sheet_names_cannot_escape_the_output_dir(self):

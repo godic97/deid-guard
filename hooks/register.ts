@@ -29,6 +29,10 @@ const DENY_ENGINE =
   'deid-guard: the engine runs only through the plugin, so that unmasking always needs the user. ' +
   'Use mcp__deid-guard__apply.'
 const RUNS_ENGINE = /deid\.py|deidlib/
+const MENTIONS_DATA = /\.(csv|tsv|xlsx|jsonl?)\b/i
+// Rows a person typed. They pass even when the engine is down, so the user
+// can still talk to Claude about the problem.
+const TYPED_DOORS = new Set(['prompt', 'command'])
 const WITHHELD = '[deid-guard: content withheld because the de-identification engine failed]'
 // Rows the model never reads, or wrote itself.
 const SKIP_DOORS = new Set(['response', 'notice'])
@@ -122,6 +126,12 @@ async function guardOrRefuse($: EngineInterface, paths: readonly string[]): Prom
   return undefined
 }
 
+/** Text from a file or the model, made safe to show in a dialog line. */
+function forDialog(text: string, max: number): string {
+  const flat = text.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').trim()
+  return JSON.stringify(flat.length > max ? flat.slice(0, max) + '…' : flat)
+}
+
 function failure(what: string, error: unknown): string {
   const reason = error && typeof error === 'object' && 'message' in error ? String(error.message) : 'unknown error'
   return `deid-guard: could not de-identify ${what}, so it was not read (${reason})`
@@ -190,6 +200,9 @@ export const register: Register = (on, options) => {
   // scrubber before the command prints any of them.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (RUNS_ENGINE.test(e.command)) return { deny: DENY_ENGINE }
+    // A glob or a variable can name data files the path parser cannot see,
+    // so any mention of a data extension profiles new files first.
+    if (MENTIONS_DATA.test(e.command)) await engine($, ['scan'])
     const refused = await guardOrRefuse($, dataPathsIn(e.command))
     return refused ? { deny: refused } : next(e)
   }).catch(($, e, next) =>
@@ -224,11 +237,13 @@ export const register: Register = (on, options) => {
     const plan = await engine($, ['plan', input.file], { decisions })
     const unmasks = (plan.unmasks ?? []) as string[]
     if (unmasks.length) {
-      const columns = unmasks.join(', ')
+      // Name the file and columns as the engine resolved them: the model's
+      // own strings could carry text that talks the user into approving.
+      const columns = ((plan.columns ?? []) as string[]).map(c => forDialog(c, 40)).join(', ')
       let answer = ''
       try {
         answer = await $.ui.ask(
-          `deid-guard: Claude wants to send these columns of ${input.file} to the model without masking: ${columns}. Allow?`,
+          `deid-guard (not Claude) asks: send these columns of ${forDialog(String(plan.file), 120)} to the model without masking: ${columns}?`,
           { header: 'Unmask?', options: [KEEP_MASKED, SEND_UNMASKED] },
         )
       } catch {
@@ -254,8 +269,13 @@ export const register: Register = (on, options) => {
 
   // Every row the model reads: prompts, tool results, notes, hook output.
   on('session.append', async ($, e, next) => {
-    if (!engineReady || SKIP_DOORS.has(e.door)) return next(e)
+    if (SKIP_DOORS.has(e.door)) return next(e)
     const content = e.message.content as unknown as Content
+    if (!engineReady) {
+      if (TYPED_DOORS.has(e.door)) return next(e)
+      const withheld = withTexts(content, textsOf(content).map(() => WITHHELD)) as unknown as typeof e.message.content
+      return next({ ...e, message: { ...e.message, content: withheld } })
+    }
     const texts = textsOf(content)
     if (!texts.some(t => t.trim())) return next(e)
     const scrubbed = await engine($, ['scrub'], { texts })
@@ -271,7 +291,8 @@ export const register: Register = (on, options) => {
   // Messages the engine adds per request, such as a file the user mentioned
   // or a file that changed on disk.
   on('prompt.attachment', async ($, e, next) => {
-    if (!engineReady || SAFE_ATTACHMENTS.has(e.type) || !e.text.trim()) return next(e)
+    if (SAFE_ATTACHMENTS.has(e.type) || !e.text.trim()) return next(e)
+    if (!engineReady) return next({ ...e, text: WITHHELD })
     const scrubbed = await engine($, ['scrub'], { texts: [e.text] })
     return scrubbed.hits ? next({ ...e, text: scrubbed.texts[0] }) : next(e)
   }).catch(($, e, next) => next({ ...e, text: WITHHELD }))

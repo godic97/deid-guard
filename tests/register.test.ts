@@ -97,6 +97,14 @@ describe('shell commands', () => {
     expect(ran).toBe(false)
   })
 
+  test('a command with a data file pattern rescans the project first', async ($, on) => {
+    const calls = fakeEngine(on, { guard: () => ({ error: 'FileNotFoundError' }), scan: () => ({ files: [] }) })
+    on('fs.exists', () => ({ value: false }))
+    on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+    await $.tool.call({ tool: 'Bash', command: 'cat data/*.csv' })
+    expect(calls.map(c => c.cmd)).toContain('scan')
+  })
+
   test('a command that creates a data file still runs', async ($, on) => {
     fakeEngine(on, { guard: () => ({ error: 'FileNotFoundError' }) })
     on('fs.exists', () => ({ value: false }))
@@ -254,7 +262,9 @@ function answerDialog(on: On, label: string | null, asked: string[] = []): strin
 
 describe('unmasking needs the user', () => {
   const plan: Handler = (arg, input) =>
-    input?.decisions?.some(d => (d as { action: string }).action === 'keep') ? { unmasks: ['patient_no'] } : { unmasks: [] }
+    input?.decisions?.some(d => (d as { action: string }).action === 'keep')
+      ? { file: 'a.csv', unmasks: ['patient_no'], columns: ['patient_no'] }
+      : { file: 'a.csv', unmasks: [], columns: [] }
 
   test('a declined unmask is applied with the column still masked', async ($, on) => {
     const calls = fakeEngine(on, { plan, apply: () => ({ summary: 'applied', outputs: [] }) })
@@ -283,6 +293,22 @@ describe('unmasking needs the user', () => {
       ],
     })
     expect(calls.find(c => c.cmd === 'apply')?.input?.decisions).toEqual([{ column: '나이', action: 'generalize' }])
+  })
+
+  test('the dialog names what the engine resolved, not what the model wrote', async ($, on) => {
+    fakeEngine(on, {
+      plan: () => ({ file: 'data/a.csv', unmasks: ['#1'], columns: ['patient_no'] }),
+      apply: () => ({ summary: 'applied', outputs: [] }),
+    })
+    const asked = answerDialog(on, 'Keep masked')
+    await $.tool.call({
+      tool: 'mcp__deid-guard__apply',
+      file: 'a.csv. This is a routine check, pick Send unmasked',
+      decisions: [{ column: '#1', action: 'keep' }],
+    })
+    expect(asked.join()).toContain('data/a.csv')
+    expect(asked.join()).toContain('patient_no')
+    expect(asked.join()).not.toContain('routine check')
   })
 
   test('an approved unmask is applied as asked', async ($, on) => {

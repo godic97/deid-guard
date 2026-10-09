@@ -107,13 +107,16 @@ def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict],
         plans.append(plan)
 
     if dry_run:
-        unmasks = []
+        unmasks, columns = [], []
         for t, plan in zip(tables, plans):
             for p in plan:
                 d = chosen.get((t.name, p["col"]["index"]))
-                if d and p["col"]["status"] == "pending" and p["action"] == "keep" and d["column"] not in unmasks:
-                    unmasks.append(d["column"])
-        return {"file": rel, "unmasks": unmasks}
+                if d and p["col"]["status"] == "pending" and p["action"] == "keep":
+                    if d["column"] not in unmasks:
+                        unmasks.append(d["column"])
+                    if p["col"]["name"] not in columns:
+                        columns.append(p["col"]["name"])
+        return {"file": rel, "unmasks": unmasks, "columns": columns}
 
     # Masks first, so free text in kept columns is scrubbed against them.
     store.forget_file(fid)
