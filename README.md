@@ -16,7 +16,7 @@ Every conversation row (prompts, tool results) ──session.append──▶ eng
 ```
 
 1. **First read.** Claude gets a profile card instead of the file. The card lists column names, types, unique ratios, value shapes (`A-######`) and what the detectors found. It contains no cell values.
-2. **Judge and confirm.** Claude infers identifier columns (patient numbers, employee IDs, member IDs, ...) from the card and asks the user how to treat them with `AskUserQuestion`.
+2. **Judge and confirm.** Claude infers identifier columns (patient numbers, employee IDs, member IDs, ...) from the card and asks the user how to treat them with `AskUserQuestion`. If Claude asks to keep a masked column as is, deid-guard asks the user again in its own dialog; without that approval the column stays masked.
 3. **Apply.** `mcp__deid-guard__apply` writes a de-identified copy under `.deid/out/`. From then on, reading the original file returns the copy.
 4. **Safety net.** The engine scrubs every row the model reads: prompts, Read/Bash/Grep results and attachments. Known original values become their pseudonyms, and detected patterns become tokens.
 
@@ -42,18 +42,34 @@ Every conversation row (prompts, tool results) ──session.append──▶ eng
 
 ## Install
 
-```bash
-git clone git@github.com:godic97/deid-guard.git
-claude --plugin-dir /path/to/deid-guard
+Inside Claude Code:
+
+```
+/plugin install deid-guard --marketplace godic97/deid-guard
 ```
 
-To load it in every session, add this to `~/.claude/settings.json`:
+Or from your shell:
 
-```json
-{ "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/path/to/deid-guard" } }
+```bash
+claude plugin marketplace add godic97/deid-guard
+claude plugin install deid-guard@godic97
+```
+
+To try a local checkout for one session:
+
+```bash
+git clone https://github.com/godic97/deid-guard.git
+claude --plugin-dir ./deid-guard
 ```
 
 To use another Python, change the `deid-guard.python` row in `/config` (default `python3`).
+
+## What deid-guard runs and sends
+
+- It runs one local program: `python3 <plugin>/engine/deid.py`, started by the mod for each check.
+- It reads the data files Claude touches and writes only under `.deid/` in your project: the mapping database, profile cards and de-identified copies.
+- It makes no network requests and sends nothing anywhere. The only text that leaves your machine is what Claude Code already sends to the model, after deid-guard has scrubbed it.
+- It adds one tool (`mcp__deid-guard__apply`), two commands, a short system prompt section that explains the workflow to Claude, and a status line entry.
 
 ## Commands
 

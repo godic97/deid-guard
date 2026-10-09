@@ -1,10 +1,12 @@
 {
   "name": "deid-guard",
-  "version": "0.1.0",
+  "displayName": "deid-guard",
+  "version": "0.2.0",
   "description": "De-identifies personal data in tabular files (CSV, TSV, XLSX, JSON) before anything reaches the model. Korean and English.",
   "author": {
     "name": "godic97"
   },
+  "homepage": "https://github.com/godic97/deid-guard",
   "repository": "https://github.com/godic97/deid-guard",
   "keywords": [
     "privacy",

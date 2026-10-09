@@ -1,0 +1,14 @@
+{
+  "name": "godic97",
+  "description": "godic97's Claude Code plugins",
+  "owner": {
+    "name": "godic97"
+  },
+  "plugins": [
+    {
+      "name": "deid-guard",
+      "source": "./",
+      "description": "De-identifies personal data in tabular files (CSV, TSV, XLSX, JSON) before anything reaches the model. Korean and English."
+    }
+  ]
+}
