@@ -49,21 +49,21 @@ Every conversation row (prompts, tool results) ──session.append──▶ eng
 Inside Claude Code:
 
 ```
-/plugin marketplace add godic97/deid-guard
+/plugin marketplace add gingoa-ai/deid-guard
 /plugin install deid-guard@godic97
 ```
 
 Or from your shell:
 
 ```bash
-claude plugin marketplace add godic97/deid-guard
+claude plugin marketplace add gingoa-ai/deid-guard
 claude plugin install deid-guard@godic97
 ```
 
 To try a local checkout for one session:
 
 ```bash
-git clone https://github.com/godic97/deid-guard.git
+git clone https://github.com/gingoa-ai/deid-guard.git
 claude --plugin-dir ./deid-guard
 ```
 
@@ -101,7 +101,7 @@ claude plugin test .                                        # mod tests
 claude plugin validate .                                    # static checks
 ```
 
-Mutation testing uses [mutmut](https://github.com/boxed/mutmut) 3 through [mutation-gate](https://github.com/godic97/mutation-gate), with the settings in `pyproject.toml`:
+Mutation testing uses [mutmut](https://github.com/boxed/mutmut) 3 through [mutation-gate](https://github.com/gingoa-ai/mutation-gate), with the settings in `pyproject.toml`:
 
 ```bash
 uv venv .venv && uv pip install --python .venv/bin/python pytest mutmut
