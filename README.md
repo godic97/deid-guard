@@ -49,7 +49,8 @@ Every conversation row (prompts, tool results) ──session.append──▶ eng
 Inside Claude Code:
 
 ```
-/plugin install deid-guard --marketplace godic97/deid-guard
+/plugin marketplace add godic97/deid-guard
+/plugin install deid-guard@godic97
 ```
 
 Or from your shell:
