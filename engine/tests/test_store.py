@@ -44,6 +44,11 @@ class StoreTest(unittest.TestCase):
         self.assertIsNone(self.store.lookup("홍길동"))
         self.assertEqual(self.store.multiword_lookups(), [("서울특별시 강남구 테헤란로 1", "[REDACTED]")])
 
+    def test_lookup_surfaces_are_stripped(self):
+        self.store.add_lookups("f1", "name", [(" 김철수 ", "NAME_000009"), ("   ", "X")])
+        self.assertEqual(self.store.lookup("김철수"), "NAME_000009")
+        self.assertIsNone(self.store.lookup(""))
+
 
 class EntityNameTest(unittest.TestCase):
     def test_ascii_column(self):

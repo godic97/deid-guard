@@ -96,7 +96,8 @@ class Store:
         self.db.executemany(
             "INSERT OR REPLACE INTO lookups (file_id, column, surface, replacement, multiword) "
             "VALUES (?, ?, ?, ?, ?)",
-            ((file_id, column, s, r, 0 if SPAN_RE.fullmatch(s) else 1) for s, r in pairs),
+            ((file_id, column, s, r, 0 if SPAN_RE.fullmatch(s) else 1)
+             for s, r in ((s.strip(), r) for s, r in pairs) if s),
         )
 
     def forget_column(self, file_id: str, column: str) -> None:
