@@ -58,6 +58,56 @@ DATE_RE = re.compile(r"^(\d{4})[-./](\d{1,2})[-./](\d{1,2})([ T].*)?$|^(\d{4})(\
 KR_ADDR = re.compile(r"\S+(시|도)\s+\S+(시|군|구)(\s|$)|\S+(로|길)\s*\d+")
 
 
+PERSONAL_KEY = re.compile(
+    r"성명|이름|성함|환자명|고객명|회원명|보호자|주민|rrn|ssn|social|phone|mobile|^tel|전화|연락처|휴대|"
+    r"e-?mail|이메일|주소|address|^addr|birth|^dob$|생년월일|생일|patient|환자|member|회원|customer|고객|"
+    r"^mrn$|차트|passport|여권|account|계좌|card|카드|license|면허|employee|사번|학번",
+    re.I,
+)
+GENERIC_KEY = re.compile(r"^(name|full_?name|id|no|number|value)$", re.I)
+
+
+def register_json_leaves(store: Store, fid: str, path: Path) -> int:
+    """Mask values under personal-looking keys in a JSON file that is not a table.
+
+    A leaf counts when its own key looks personal, or when it has a generic
+    key (name, id) under a personal one ({"patient": {"name": ...}}), or
+    when it is a Korean person name under a "name" key.
+    """
+    data = json.loads(path.read_bytes().decode("utf-8-sig", errors="replace"))
+    pairs: Dict[str, str] = {}
+
+    def walk(node, key: str, personal_above: bool) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, str(k), personal_above or bool(PERSONAL_KEY.search(str(k))))
+            return
+        if isinstance(node, list):
+            for v in node:
+                walk(v, key, personal_above)
+            return
+        if node is None or isinstance(node, bool):
+            return
+        value = str(node).strip()
+        mine = bool(PERSONAL_KEY.search(key))
+        generic_under_personal = personal_above and bool(GENERIC_KEY.match(key))
+        korean_name = GENERIC_KEY.match(key) and name_like(value)
+        if not (mine or generic_under_personal or korean_name) or value in pairs:
+            return
+        kind = classify(value)
+        if korean_name or (kind is None and re.search(r"name|성명|이름|성함|명$", key, re.I)):
+            kind = kind or "name"
+        if not maskable(value, kind):
+            return
+        entity = kind if kind in MANDATORY else ("NAME" if kind == "name" else entity_name(key, fallback="ID"))
+        pairs[value] = store.pseudonym(entity, norm_for(kind, value), raw=value)
+
+    walk(data, "", False)
+    store.add_lookups(fid, "\x00json", pairs.items())
+    store.commit()
+    return len(pairs)
+
+
 def _norm_col(name: str) -> str:
     return re.sub(r"[\s\-]+", "_", name.strip().lower())
 
@@ -225,8 +275,9 @@ def rel_path(root: Path, path: Path) -> str:
 
 
 def fingerprint(path: Path) -> str:
+    # ctime moves on every write and cannot be set back the way mtime can.
     st = os.stat(path)
-    return f"{st.st_size}:{st.st_mtime_ns}"
+    return f"{st.st_size}:{st.st_mtime_ns}:{st.st_ctime_ns}:{st.st_ino}"
 
 
 def load_tables(path: Path) -> List[Tuple[Table, bool, List[int]]]:
@@ -331,7 +382,8 @@ def render_card(rel: str, tables: List[Dict]) -> str:
 def profile_file(store: Store, root: Path, path: Path) -> Dict:
     root, path = Path(root), Path(path)
     rel, fid = rel_path(root, path), file_id(root, path)
-    store.forget_file(fid)
+    # Masks are never dropped here: a value that left the file may still sit
+    # in a copy or an old output. Only a user-approved "keep" removes them.
     tables = []
     for table, header_masked, masked in load_tables(path):
         cols = profile_columns(table)

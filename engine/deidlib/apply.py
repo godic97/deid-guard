@@ -119,11 +119,14 @@ def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict],
         return {"file": rel, "unmasks": unmasks, "columns": columns}
 
     # Masks first, so free text in kept columns is scrubbed against them.
-    store.forget_file(fid)
+    # Only a kept column loses its masks; the plugin asks the user before a
+    # pending column can be kept.
     for t, plan in zip(tables, plans):
         for p in plan:
             i, kind, action = p["col"]["index"] - 1, p["kind"], p["action"]
             key = f"{t.name}\x00{p['col']['name']}"
+            if action == "keep" and kind not in MANDATORY:
+                store.forget_column(fid, key)
             pairs = {}
             for r in t.rows:
                 v = r[i]

@@ -32,7 +32,9 @@ Every conversation row (prompts, tool results) ──session.append──▶ eng
 
 - Pseudonyms are stable. The same value gets the same token in every file, so joins and counts still work.
 - All state lives in the project's `.deid/` directory, which ignores itself in git. The model can read only `.deid/out` and `.deid/cards`.
-- A JSON file counts as data only when it holds a list of at least two records. Config files such as `package.json` are read as they are.
+- A JSON file counts as a table when it holds at least two records: a list of objects, objects keyed by ID, or rows as lists (pandas `orient="split"` or `"values"`). Other JSON, such as `package.json`, is read as it is, but values under personal-looking keys (`성명`, `phone`, `patient.name`, ...) are still masked.
+- Masks only grow. Rewriting or shrinking a file does not unmask values it held before; only a user-approved "keep" does.
+- A file is re-profiled when its size, modification time, change time or inode changes, so restoring the modification time after an edit does not hide it.
 - deid-guard profiles every data file in the project when a session starts and again before each shell command, so a file a command reaches through a glob or a script is known before its output is read. Unchanged files cost one `stat`.
 - Headers are shown as `col_N` when a file has no header row (its first row is data) or when headers look like person names (pivot tables).
 

@@ -163,6 +163,41 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(g["status"], "decided")
         self.assertEqual(g["read_path"], str(self.root / ".deid/out/patients.csv"))
 
+    def test_masks_survive_a_file_rewritten_as_config_json(self):
+        import json as _json
+        json_path = self.root / "people.json"
+        json_path.write_text(_json.dumps([{"성명": "박지민", "x": 1}, {"성명": "최유리", "x": 2}]))
+        guard(self.store, self.root, json_path)
+        self.assertEqual(self.store.lookup("박지민"), "NAME_000001")
+        json_path.write_text(_json.dumps({"name": "my-app"}))
+        self.assertEqual(guard(self.store, self.root, json_path)["status"], "not_data")
+        self.assertEqual(self.store.lookup("박지민"), "NAME_000001")
+        self.assertEqual(self.store.lookup("최유리"), "NAME_000002")
+
+    def test_masks_survive_rows_removed_from_the_file(self):
+        guard(self.store, self.root, self.path)
+        write_patients(self.path, n=3)
+        apply_decisions(self.store, self.root, self.path, [])
+        self.assertEqual(self.store.lookup("홍길동"), "NAME_000020")
+
+    def test_content_change_with_restored_mtime_is_noticed(self):
+        import os
+        guard(self.store, self.root, self.path)
+        st = os.stat(self.path)
+        self.path.write_bytes(self.path.read_bytes().replace(b"P-100101", b"Q-100101"))
+        os.utime(self.path, ns=(st.st_atime_ns, st.st_mtime_ns))
+        self.assertEqual(os.stat(self.path).st_size, st.st_size)
+        guard(self.store, self.root, self.path)
+        self.assertIsNotNone(self.store.lookup("Q-100101"))
+
+    def test_personal_fields_in_non_tabular_json_are_masked(self):
+        p = self.root / "one.json"
+        p.write_text('{"name": "my-app", "환자": {"성명": "박지민", "연락처": "010-3333-4444", "patient_id": "H-2024-0012"}}')
+        self.assertEqual(guard(self.store, self.root, p)["status"], "not_data")
+        self.assertIsNotNone(self.store.lookup("박지민"))
+        self.assertIsNotNone(self.store.lookup("H-2024-0012"))
+        self.assertIsNone(self.store.lookup("my-app"))
+
     def test_changed_file_is_reapplied_with_same_decisions(self):
         apply_decisions(self.store, self.root, self.path, [{"column": "나이", "action": "drop"}])
         write_patients(self.path, n=25)

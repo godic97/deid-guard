@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict
 
 from .apply import apply_decisions, load_state, save_state
-from .profile import file_id, fingerprint, profile_file, rel_path
+from .profile import file_id, fingerprint, profile_file, register_json_leaves, rel_path
 from .store import Store
 from .tables import NotTabular
 
@@ -33,7 +33,7 @@ def guard(store: Store, root: Path, path: Path) -> Dict:
         try:
             result = profile_file(store, root, path)
         except NotTabular:
-            store.forget_file(fid)
+            register_json_leaves(store, fid, path)
             save_state(root, fid, {"file": rel, "fingerprint": current, "not_data": True})
             return {"status": "not_data", "file": rel, "read_path": str(path)}
         card.parent.mkdir(parents=True, exist_ok=True)

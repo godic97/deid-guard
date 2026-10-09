@@ -84,9 +84,27 @@ def _records_table(name: str, records: list) -> Table:
     return Table(name, columns, rows)
 
 
+def _rows_table(name: str, rows: list, columns: Optional[list] = None) -> Table:
+    width = max(len(r) for r in rows)
+    if columns is None or len(columns) < width:
+        columns = list(columns or []) + [f"col_{i + 1}" for i in range(len(columns or []), width)]
+    cells = [[_cell(c) for c in r] for r in rows]
+    return Table(name, [str(c) for c in columns], _pad(cells, len(columns)))
+
+
 def _read_json(path: Path) -> Table:
     data = json.loads(_decode(path.read_bytes()))
-    if isinstance(data, dict):
+    # Rows as lists: pandas orient="split" ({"columns", "data"}) and orient="values".
+    if isinstance(data, dict) and isinstance(data.get("data"), list) and data["data"] \
+            and all(isinstance(r, list) for r in data["data"]):
+        cols = data.get("columns") if isinstance(data.get("columns"), list) else None
+        return _rows_table(path.stem, data["data"], cols)
+    if isinstance(data, list) and len(data) >= 2 and all(isinstance(r, list) for r in data):
+        return _rows_table(path.stem, data)
+    if isinstance(data, dict) and len(data) >= 2 and all(isinstance(v, dict) for v in data.values()):
+        # Records keyed by an ID: {"P-1": {...}, "P-2": {...}}
+        data = [{"_key": k, **v} for k, v in data.items()]
+    elif isinstance(data, dict):
         data = next((v for v in data.values() if isinstance(v, list) and v and isinstance(v[0], dict)), [data])
     return _records_table(path.stem, data if isinstance(data, list) else [data])
 

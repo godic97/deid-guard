@@ -59,6 +59,27 @@ class ReadTest(unittest.TestCase):
         with self.assertRaises(NotTabular):
             read_tables(p)
 
+    def test_json_keyed_by_id_is_a_table(self):
+        p = self.root / "a.json"
+        p.write_text(json.dumps({"P-1": {"name": "Kim"}, "P-2": {"name": "Lee"}}))
+        (t,) = read_tables(p)
+        self.assertEqual(t.columns, ["_key", "name"])
+        self.assertEqual(t.rows, [["P-1", "Kim"], ["P-2", "Lee"]])
+
+    def test_pandas_split_json_is_a_table(self):
+        p = self.root / "a.json"
+        p.write_text(json.dumps({"columns": ["id", "name"], "index": [0, 1], "data": [["P-1", "Kim"], ["P-2", "Lee"]]}))
+        (t,) = read_tables(p)
+        self.assertEqual(t.columns, ["id", "name"])
+        self.assertEqual(t.rows, [["P-1", "Kim"], ["P-2", "Lee"]])
+
+    def test_list_of_rows_json_is_a_table(self):
+        p = self.root / "a.json"
+        p.write_text(json.dumps([["P-1", "Kim"], ["P-2", "Lee"]]))
+        (t,) = read_tables(p)
+        self.assertEqual(t.columns, ["col_1", "col_2"])
+        self.assertEqual(t.rows, [["P-1", "Kim"], ["P-2", "Lee"]])
+
     def test_jsonl(self):
         p = self.root / "a.jsonl"
         p.write_text('{"id": "a"}\n\n{"id": "b"}\n')
