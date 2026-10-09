@@ -149,6 +149,19 @@ def _xml(data: bytes):
     return ET.fromstring(data)
 
 
+def _string_text(node) -> str:
+    """The text of a shared or inline string: its own <t> and rich-text runs,
+    without phonetic runs (<rPh>), which hold readings, not content."""
+    t, r = f"{{{_NS['m']}}}t", f"{{{_NS['m']}}}r"
+    parts = []
+    for child in node:
+        if child.tag == t:
+            parts.append(child.text or "")
+        elif child.tag == r:
+            parts.extend(x.text or "" for x in child.findall("m:t", _NS))
+    return "".join(parts)
+
+
 def _col_index(ref: str) -> int:
     n = 0
     for ch in re.match(r"[A-Z]+", ref).group(0):
@@ -157,7 +170,9 @@ def _col_index(ref: str) -> int:
 
 
 def _is_date_format(code: str) -> bool:
-    code = re.sub(r'"[^"]*"|\[[^\]]*\]', "", code).lower()
+    # Quoted text, [colour/condition] blocks and backslash-escaped characters
+    # are literals, so their letters say nothing about dates ("0.0\ \m").
+    code = re.sub(r'"[^"]*"|\[[^\]]*\]|\\.', "", code).lower()
     return bool(re.search(r"[ymd]", code)) and "general" not in code
 
 
@@ -179,7 +194,7 @@ def _read_xlsx(path: Path) -> List[Table]:
         shared: List[str] = []
         if "xl/sharedStrings.xml" in names:
             for si in _xml(z.read("xl/sharedStrings.xml")).findall("m:si", _NS):
-                shared.append("".join(t.text or "" for t in si.iter(f"{{{_NS['m']}}}t")))
+                shared.append(_string_text(si))
 
         date_styles = set()
         if "xl/styles.xml" in names:
@@ -202,7 +217,8 @@ def _read_xlsx(path: Path) -> List[Table]:
                 for c in row.findall("m:c", _NS):
                     t, v = c.get("t"), c.find("m:v", _NS)
                     if t == "inlineStr":
-                        val = "".join(x.text or "" for x in c.iter(f"{{{_NS['m']}}}t"))
+                        node = c.find("m:is", _NS)
+                        val = _string_text(node) if node is not None else ""
                     elif v is None or v.text is None:
                         continue
                     elif t == "s":

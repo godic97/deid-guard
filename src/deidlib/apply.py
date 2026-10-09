@@ -26,13 +26,13 @@ def state_path(root: Path, fid: str) -> Path:
 
 def load_state(root: Path, fid: str) -> Optional[Dict]:
     p = state_path(root, fid)
-    return json.loads(p.read_text()) if p.exists() else None
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
 def save_state(root: Path, fid: str, state: Dict) -> None:
     p = state_path(root, fid)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(state, ensure_ascii=False, indent=1))
+    p.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def _match(decisions: List[Dict], tables: List[Table], cols_by_table: List[List[Dict]]) -> Dict:
@@ -157,7 +157,8 @@ def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict],
                 if v is None:
                     row.append(None)
                 elif p["action"] == "pseudonymize":
-                    row.append(p["tokens"][v])
+                    # A blank cell got no token and holds nothing to hide.
+                    row.append(p["tokens"][v] if v.strip() else v)
                 elif p["action"] == "generalize":
                     row.append(generalize(p["kind"], v))
                 elif p["col"]["type"] in ("int", "float", "date"):

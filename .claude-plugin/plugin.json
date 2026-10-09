@@ -1,7 +1,7 @@
 {
   "name": "deid-guard",
   "displayName": "deid-guard",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "De-identifies personal data in tabular files (CSV, TSV, XLSX, JSON) before anything reaches the model. Korean and English.",
   "author": {
     "name": "godic97"

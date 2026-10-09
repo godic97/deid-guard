@@ -45,7 +45,9 @@ def generalize(kind: str, value: str) -> str:
     if kind == "age":
         try:
             n = int(float(v))
-        except ValueError:
+        except (ValueError, OverflowError):
+            return REDACTED
+        if n < 0:
             return REDACTED
         lo = n - n % 5
         return f"{lo}-{lo + 4}"

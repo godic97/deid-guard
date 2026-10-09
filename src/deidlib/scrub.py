@@ -15,7 +15,9 @@ PARTICLES = sorted(
     reverse=True,
 )
 _FLOAT_ZERO = re.compile(r"^(\d+)\.0+$")
-TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_\d{6}\b")
+# Lookarounds, not \b: Python counts Hangul as a word character, so \b
+# finds no boundary in "NAME_000001이" and the token would not be restored.
+TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_\d{6}(?![0-9])")
 
 
 class Scrubber:

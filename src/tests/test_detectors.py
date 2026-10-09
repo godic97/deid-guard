@@ -71,6 +71,49 @@ class CardBoundaryTest(unittest.TestCase):
         self.assertEqual(kinds("0000 0000 0000 0000"), [])
 
 
+class RrnDateBoundaryTest(unittest.TestCase):
+    def test_rrn_accepts_december_and_the_thirty_first(self):
+        self.assertEqual(kinds("901231-1234567"), [("RRN", "901231-1234567")])
+
+    def test_rrn_accepts_days_that_end_in_zero(self):
+        self.assertEqual(
+            kinds("900110-1234567, 900220-2234567, 900330-1234567"),
+            [("RRN", "900110-1234567"), ("RRN", "900220-2234567"), ("RRN", "900330-1234567")],
+        )
+
+    def test_rrn_rejects_day_thirty_two(self):
+        self.assertEqual(kinds("주문번호 900132-1234567"), [])
+
+
+class LuhnTest(unittest.TestCase):
+    def test_published_test_card_numbers_are_cards(self):
+        for number in ("5105 1051 0510 5100", "378282246310005", "6011 1111 1111 1117",
+                       "4012 8888 8888 1881", "5555 5555 5555 4444"):
+            with self.subTest(number=number):
+                self.assertEqual(kinds(number), [("CARD", number)])
+
+    def test_one_wrong_digit_fails_the_checksum(self):
+        for number in ("5105 1051 0510 5106", "378282246310006", "6011 1111 1111 1118"):
+            with self.subTest(number=number):
+                self.assertEqual(kinds(number), [])
+
+
+class PhoneNormalizationTest(unittest.TestCase):
+    def test_us_country_code_is_dropped(self):
+        a, b = find_all("+1 415-555-0134 or (415) 555-0134")
+        self.assertEqual((a.value, a.norm), ("+1 415-555-0134", "4155550134"))
+        self.assertEqual((b.value, b.norm), ("(415) 555-0134", "4155550134"))
+
+    def test_us_area_code_starting_with_82_is_not_treated_as_korea(self):
+        a, b = find_all("823-555-0134 / +1 823-555-0134")
+        self.assertEqual((a.kind, a.norm), ("PHONE", "8235550134"))
+        self.assertEqual((b.kind, b.norm), ("PHONE", "8235550134"))
+
+    def test_korean_country_code_becomes_leading_zero(self):
+        (m,) = find_all("+82 10-1234-5678")
+        self.assertEqual(m.norm, "01012345678")
+
+
 class ContextNormalizationTest(unittest.TestCase):
     def test_passport_value_stops_at_the_number_and_normalizes_to_upper_case(self):
         (m,) = find_all("여권번호: m12345678 발급")

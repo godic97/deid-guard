@@ -181,10 +181,11 @@ def _id_column(name: str) -> bool:
 def _infer_kind(name: str, values: List[str], vtype: str, unique: float, top_shape: float) -> Optional[str]:
     n = _norm_col(name)
     if values:
-        kinds = Counter(classify(v) for v in values)
-        kind, count = kinds.most_common(1)[0]
-        if kind in MANDATORY and count / len(values) >= 0.5:
-            return kind
+        # Mandatory kinds together, so a column mixing phones and emails is
+        # forced, and the verdict does not depend on row order.
+        kinds = Counter(k for k in (classify(v) for v in values) if k in MANDATORY)
+        if kinds and sum(kinds.values()) / len(values) >= 0.5:
+            return max(sorted(kinds), key=lambda k: kinds[k])
     if BIRTH_COL.search(n):
         return "birthdate"
     if ZIP_COL.search(n):
@@ -233,8 +234,8 @@ def default_entity(column: str, kind: Optional[str]) -> str:
         return kind
     if kind == "name":
         return "NAME"
-    fallback = ENTITY_FALLBACK.get(_norm_col(column), "ID")
-    return entity_name(column, fallback=fallback)
+    known = ENTITY_FALLBACK.get(_norm_col(column))
+    return known or entity_name(column, fallback="ID")
 
 
 def maskable(value: str, kind: Optional[str]) -> bool:
@@ -354,8 +355,12 @@ def register_masks(store: Store, fid: str, table: Table, col: Dict) -> None:
     store.add_lookups(fid, key, pairs.items())
 
 
+def _percent(ratio: float) -> int:
+    return int(ratio * 100 + 0.5)
+
+
 def _fmt_shapes(shapes) -> str:
-    return ", ".join(f"`{s}` {int(p * 100)}%" for s, p in shapes[:2]) or "-"
+    return ", ".join(f"`{s}` {_percent(p)}%" for s, p in shapes[:2]) or "-"
 
 
 def render_card(rel: str, tables: List[Dict]) -> str:
@@ -375,7 +380,7 @@ def render_card(rel: str, tables: List[Dict]) -> str:
                   "|---|---|---|---|---|---|---|---|---|"]
         for c in t["columns"]:
             lines.append(
-                f"| {c['index']} | {c['name']} | {c['type']} | {c['non_null']} | {int(c['unique'] * 100)}% "
+                f"| {c['index']} | {c['name']} | {c['type']} | {c['non_null']} | {_percent(c['unique'])}% "
                 f"| {_fmt_shapes(c['shapes'])} | {c['kind'] or '-'} | {c['status']} | {c['default_action']} |"
             )
         lines.append("")

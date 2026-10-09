@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,6 +45,20 @@ class StoreTest(unittest.TestCase):
         self.assertIsNone(self.store.lookup("홍길동"))
         self.assertEqual(self.store.multiword_lookups(), [("서울특별시 강남구 테헤란로 1", "[REDACTED]")])
 
+    def test_state_lives_in_dot_deid_state_map_sqlite(self):
+        self.assertEqual(os.listdir(self.root), [".deid"])
+        self.assertEqual(sorted(os.listdir(self.root / ".deid")), [".gitignore", "state"])
+        self.assertIn("map.sqlite", os.listdir(self.root / ".deid" / "state"))
+
+    def test_forget_file_drops_only_that_files_lookups(self):
+        self.store.add_lookups("f1", "name", [("홍길동", "NAME_000001")])
+        self.store.add_lookups("f1", "memo", [("서울특별시 강남구 테헤란로 1", "[REDACTED]")])
+        self.store.add_lookups("f2", "name", [("김철수", "NAME_000002")])
+        self.store.forget_file("f1")
+        self.assertIsNone(self.store.lookup("홍길동"))
+        self.assertEqual(self.store.multiword_lookups(), [])
+        self.assertEqual(self.store.lookup("김철수"), "NAME_000002")
+
     def test_lookup_surfaces_are_stripped(self):
         self.store.add_lookups("f1", "name", [(" 김철수 ", "NAME_000009"), ("   ", "X")])
         self.assertEqual(self.store.lookup("김철수"), "NAME_000009")
@@ -56,6 +71,10 @@ class EntityNameTest(unittest.TestCase):
 
     def test_non_ascii_column_uses_fallback(self):
         self.assertEqual(entity_name("환자번호", fallback="ID"), "ID")
+
+    def test_default_fallback_is_ID(self):
+        self.assertEqual(entity_name("환자번호"), "ID")
+        self.assertEqual(entity_name("__"), "ID")
 
     def test_leading_digit(self):
         self.assertEqual(entity_name("2nd id"), "C_2ND_ID")

@@ -44,6 +44,20 @@ class ProfileTest(unittest.TestCase):
         self.assertIn("patient_no", card)
         self.assertIn("mcp__deid-guard__apply", card)
 
+    def test_card_lists_every_column_with_its_decision(self):
+        rows = [line for line in self.result["card"].split("\n") if line.startswith("| ")]
+        for c in self.cols.values():
+            row = next(r for r in rows if r.startswith(f"| {c['index']} | {c['name']} | "))
+            self.assertTrue(row.endswith(f"| {c['kind'] or '-'} | {c['status']} | {c['default_action']} |"), row)
+
+    def test_result_describes_the_file(self):
+        self.assertEqual(self.result["file"], "data/patients.csv")
+        self.assertIn("`data/patients.csv`", self.result["card"])
+        table = self.result["tables"][0]
+        self.assertEqual((table["name"], table["rows"]), ("patients", 20))
+        self.assertFalse(table["header_masked"])
+        self.assertEqual(table["masked_headers"], [])
+
     def test_shape_is_reported(self):
         self.assertEqual(self.cols["patient_no"]["shapes"][0][0], "A-######")
 
@@ -72,6 +86,7 @@ class HeaderTest(unittest.TestCase):
         result = profile_file(self.store, self.root, path)
         table = result["tables"][0]
         self.assertTrue(table["header_masked"])
+        self.assertEqual(table["name"], "raw")
         self.assertEqual(table["columns"][0]["name"], "col_1")
         self.assertEqual(table["rows"], 20)
         self.assertNotIn("P-100101", result["card"])
@@ -83,6 +98,8 @@ class HeaderTest(unittest.TestCase):
         result = profile_file(self.store, self.root, path)
         names = [c["name"] for c in result["tables"][0]["columns"]]
         self.assertEqual(names, ["구분", "col_2", "col_3", "col_4"])
+        self.assertEqual(result["tables"][0]["masked_headers"], [1, 2, 3])
+        self.assertFalse(result["tables"][0]["header_masked"])
         self.assertNotIn("김민준", result["card"])
 
 
