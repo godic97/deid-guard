@@ -96,3 +96,7 @@ claude plugin validate .                                    # static checks
 ```
 
 All test data is synthetic (`engine/tests/fixtures.py`).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

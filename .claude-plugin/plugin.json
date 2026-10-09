@@ -8,6 +8,7 @@
   },
   "homepage": "https://github.com/godic97/deid-guard",
   "repository": "https://github.com/godic97/deid-guard",
+  "license": "MIT",
   "keywords": [
     "privacy",
     "pii",
