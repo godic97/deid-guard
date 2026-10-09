@@ -1,0 +1,4 @@
+{
+  "description": "deid-guard: routes tool calls, prompts and conversation rows through the local de-identification engine",
+  "modules": ["./register.ts"]
+}

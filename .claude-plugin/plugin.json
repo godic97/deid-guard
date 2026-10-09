@@ -1,0 +1,24 @@
+{
+  "name": "deid-guard",
+  "version": "0.1.0",
+  "description": "De-identifies personal data in tabular files (CSV, TSV, XLSX, JSON) before anything reaches the model. Korean and English.",
+  "author": {
+    "name": "godic97"
+  },
+  "repository": "https://github.com/godic97/deid-guard",
+  "keywords": [
+    "privacy",
+    "pii",
+    "de-identification",
+    "korean",
+    "data-analysis"
+  ],
+  "userConfig": {
+    "python": {
+      "type": "string",
+      "title": "Python",
+      "description": "Python 3.9+ executable that runs the de-identification engine",
+      "default": "python3"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+.deid/
+__pycache__/
+*.pyc
+.claude-plugin/types/
+tsconfig.json
+.DS_Store
