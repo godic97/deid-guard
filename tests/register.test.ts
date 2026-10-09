@@ -34,6 +34,19 @@ describe('reading data files', () => {
     expect(calls.find(c => c.cmd === 'guard')?.arg).toBe('/p/a.csv')
   })
 
+  test('a link to a data file is guarded as the data file', async ($, on) => {
+    const calls = fakeEngine(on, { guard: () => ({ status: 'pending', read_path: '/p/.deid/cards/a.csv.md' }) })
+    on('fs.stat', () => ({ value: { kind: 'file', size: 10, isLink: true, realPath: '/p/data/a.csv' } }))
+    let readPath = ''
+    on('tool.call', { tool: 'Read' }, ($, e) => {
+      readPath = e.file_path
+      return { result: 'card' }
+    })
+    await $.tool.call({ tool: 'Read', file_path: '/p/notes.txt' })
+    expect(readPath).toBe('/p/.deid/cards/a.csv.md')
+    expect(calls.find(c => c.cmd === 'guard')?.arg).toBe('/p/data/a.csv')
+  })
+
   test('Read of other files is untouched', async ($, on) => {
     const calls = fakeEngine(on, {})
     let readPath = ''
@@ -148,6 +161,48 @@ describe('the apply tool', () => {
     const call = calls.find(c => c.cmd === 'apply')
     expect(call?.arg).toBe('a.csv')
     expect(call?.input?.decisions).toEqual([{ column: '나이', action: 'generalize' }])
+  })
+})
+
+// Answers the AskUserQuestion dialog $.ui.ask opens, as the user would.
+function answerDialog(on: On, label: string | null, asked: string[] = []): string[] {
+  on('tool.call', { tool: 'AskUserQuestion' }, ($, e) => {
+    asked.push(JSON.stringify(e.questions))
+    if (label === null) return { deny: 'no one to ask' }
+    return { result: { questions: e.questions, answers: { [e.questions[0].question]: label } } }
+  })
+  return asked
+}
+
+describe('unmasking needs the user', () => {
+  const plan: Handler = (arg, input) =>
+    input?.decisions?.some(d => (d as { action: string }).action === 'keep') ? { unmasks: ['patient_no'] } : { unmasks: [] }
+
+  test('a declined unmask is applied with the column still masked', async ($, on) => {
+    const calls = fakeEngine(on, { plan, apply: () => ({ summary: 'applied', outputs: [] }) })
+    const asked = answerDialog(on, 'Keep masked')
+    const r = await $.tool.call({
+      tool: 'mcp__deid-guard__apply',
+      file: 'a.csv',
+      decisions: [{ column: 'patient_no', action: 'keep' }, { column: '나이', action: 'generalize' }],
+    })
+    expect(asked.join()).toContain('patient_no')
+    expect(calls.find(c => c.cmd === 'apply')?.input?.decisions).toEqual([{ column: '나이', action: 'generalize' }])
+    expect(JSON.stringify(r)).toContain('not approved')
+  })
+
+  test('an approved unmask is applied as asked', async ($, on) => {
+    const calls = fakeEngine(on, { plan, apply: () => ({ summary: 'applied', outputs: [] }) })
+    answerDialog(on, 'Send unmasked')
+    await $.tool.call({ tool: 'mcp__deid-guard__apply', file: 'a.csv', decisions: [{ column: 'patient_no', action: 'keep' }] })
+    expect(calls.find(c => c.cmd === 'apply')?.input?.decisions).toEqual([{ column: 'patient_no', action: 'keep' }])
+  })
+
+  test('without anyone to ask, the column stays masked', async ($, on) => {
+    const calls = fakeEngine(on, { plan, apply: () => ({ summary: 'applied', outputs: [] }) })
+    answerDialog(on, null)
+    await $.tool.call({ tool: 'mcp__deid-guard__apply', file: 'a.csv', decisions: [{ column: 'patient_no', action: 'keep' }] })
+    expect(calls.find(c => c.cmd === 'apply')?.input?.decisions).toEqual([])
   })
 })
 

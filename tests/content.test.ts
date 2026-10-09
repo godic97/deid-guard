@@ -45,6 +45,14 @@ describe('paths', () => {
     expect(isGeneratedPath('/p/data/a.csv')).toBe(false)
   })
 
+  test('dot segments and case cannot dodge the checks', () => {
+    expect(isGeneratedPath('/p/.deid/out/../../data/a.csv')).toBe(false)
+    expect(isGeneratedPath('/p/.DEID/Out/a.csv')).toBe(true)
+    expect(touchesState('/p/.deid/out/../state/files/x.json')).toBe(true)
+    expect(touchesState('cat ./.deid/cards/../state/map.db')).toBe(true)
+    expect(touchesState('cat .deid/out/./a.csv')).toBe(false)
+  })
+
   test('state is off limits in paths and commands', () => {
     expect(touchesState('/p/.deid/state/map.sqlite')).toBe(true)
     expect(touchesState('sqlite3 .deid/state/map.sqlite "select *"')).toBe(true)

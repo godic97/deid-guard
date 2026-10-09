@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -54,15 +55,28 @@ def _match(decisions: List[Dict], tables: List[Table], cols_by_table: List[List[
     return chosen
 
 
+def _safe_name(name: str, taken: set) -> str:
+    """A sheet name as a file name that cannot leave its directory."""
+    safe = re.sub(r"[^\w\- ]", "_", name).strip(" ._") or "sheet"
+    candidate, n = safe, 2
+    while candidate.lower() in taken:
+        candidate, n = f"{safe}_{n}", n + 1
+    taken.add(candidate.lower())
+    return candidate
+
+
 def _out_paths(root: Path, rel: str, tables: List[Table]) -> Dict:
     base = Path(root) / ".deid" / "out" / rel
     if rel.lower().endswith(".xlsx"):
-        sheets = {t.name: base.parent / (base.name + ".sheets") / f"{t.name}.csv" for t in tables}
+        taken: set = set()
+        sheets = {t.name: base.parent / (base.name + ".sheets") / f"{_safe_name(t.name, taken)}.csv" for t in tables}
         return {"sheets": sheets, "read": base.parent / (base.name + ".md")}
     return {"sheets": {tables[0].name: base}, "read": base}
 
 
-def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict]) -> Dict:
+def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict], dry_run: bool = False) -> Dict:
+    """Apply decisions; with dry_run, only report which decisions would unmask
+    a pending column (send its raw values to the model), changing nothing."""
     root, path = Path(root), Path(path)
     rel, fid = rel_path(root, path), file_id(root, path)
     loaded = load_tables(path)
@@ -88,6 +102,15 @@ def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict])
             entity = entity_name(entity) if entity else (c["entity"] if c["kind"] == kind else default_entity(c["name"], kind))
             plan.append({"col": c, "kind": kind, "action": action, "entity": entity, "note": note})
         plans.append(plan)
+
+    if dry_run:
+        unmasks = []
+        for t, plan in zip(tables, plans):
+            for p in plan:
+                d = chosen.get((t.name, p["col"]["index"]))
+                if d and p["col"]["status"] == "pending" and p["action"] == "keep" and d["column"] not in unmasks:
+                    unmasks.append(d["column"])
+        return {"file": rel, "unmasks": unmasks}
 
     # Masks first, so free text in kept columns is scrubbed against them.
     store.forget_file(fid)

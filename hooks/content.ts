@@ -5,7 +5,7 @@ export type Block = { type: string; [key: string]: unknown }
 export type Content = string | readonly Block[]
 
 const DATA_EXT = /\.(csv|tsv|xlsx|jsonl?)$/i
-const GENERATED = /(^|[\\/])\.deid[\\/]+(out|cards)[\\/]/
+const GENERATED = /(^|\/)\.deid\/(out|cards)\//i
 const STATE = /\.deid(?![\\/]+(out|cards)\b)|map\.sqlite/i
 const TOKEN = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_\d{6}\b/
 const PATH_IN_COMMAND =
@@ -13,9 +13,27 @@ const PATH_IN_COMMAND =
 
 export const isDataFile = (path: string): boolean => DATA_EXT.test(path)
 
-export const isGeneratedPath = (path: string): boolean => GENERATED.test(path)
+/** A path with `.` and `..` segments resolved and separators unified. */
+export function normalizePath(path: string): string {
+  const absolute = path.startsWith('/') || path.startsWith('\\')
+  const out: string[] = []
+  for (const part of path.split(/[\\/]+/)) {
+    if (part === '' || part === '.') continue
+    if (part === '..' && out.length && out[out.length - 1] !== '..') out.pop()
+    else if (part !== '..' || !absolute) out.push(part)
+  }
+  return (absolute ? '/' : '') + out.join('/')
+}
 
-export const touchesState = (text: string): boolean => STATE.test(text)
+export const isGeneratedPath = (path: string): boolean => GENERATED.test(normalizePath(path))
+
+/** Whether a path, or any path-like word of a command, reaches the engine state. */
+export function touchesState(text: string): boolean {
+  if (STATE.test(text)) return true
+  return text
+    .split(/[\s'"`;|&()<>=]+/)
+    .some(word => word.includes('..') && STATE.test(normalizePath(word)))
+}
 
 export const hasToken = (text: string): boolean => TOKEN.test(text)
 

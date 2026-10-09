@@ -17,6 +17,10 @@ import {
 } from './content.ts'
 
 type EngineResult = Record<string, any>
+type Decision = { column: string; action: string; [key: string]: unknown }
+
+const KEEP_MASKED = 'Keep masked'
+const SEND_UNMASKED = 'Send unmasked'
 
 const DENY_STATE =
   'deid-guard: .deid/ holds the re-identification state and is off limits. ' +
@@ -82,6 +86,16 @@ async function engine($: EngineInterface, args: string[], input?: unknown): Prom
   return out
 }
 
+/** Where a path lands after links; the path itself when that is unknown. */
+async function realPathOf($: EngineInterface, path: string): Promise<string> {
+  try {
+    const stat = await $.fs.stat(path, { resolve: true })
+    return stat.realPath ?? path
+  } catch {
+    return path
+  }
+}
+
 async function readPathFor($: EngineInterface, path: string): Promise<string> {
   const guarded = await engine($, ['guard', path])
   return String(guarded.read_path)
@@ -139,9 +153,11 @@ export const register: Register = (on, options) => {
   }).catch(() => ({ deny: DENY_STATE }))
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
-    if (!isDataFile(e.file_path) || isGeneratedPath(e.file_path)) return next(e)
+    const real = await realPathOf($, e.file_path)
+    if (touchesState(real)) return { deny: DENY_STATE }
+    if (!isDataFile(real) || isGeneratedPath(real)) return next(e)
     if (!engineReady) return { deny: failure(e.file_path, new Error('engine unavailable')) }
-    return next({ ...e, file_path: await readPathFor($, e.file_path) })
+    return next({ ...e, file_path: await readPathFor($, real) })
   }).catch(($, e, next) => ({ deny: failure('this data file', next.error) }))
 
   // Profile the data files a command names, so their values are known to the
@@ -167,17 +183,40 @@ export const register: Register = (on, options) => {
     return next({ ...e, old_string: restored.texts[0], new_string: restored.texts[1] })
   }).catch(($, e, next) => next(e))
 
+  // Keeping a pending column sends its raw values to the model, so only the
+  // user can allow it, in a dialog the model does not answer.
   on('tool.call', { tool: 'mcp__deid-guard__apply' }, async ($, e) => {
-    const input = e as unknown as { file?: string; decisions?: unknown[] }
+    const input = e as unknown as { file?: string; decisions?: Decision[] }
     if (!input.file) return { result: 'deid-guard: pass the data file as "file".', isError: true }
-    const applied = await engine($, ['apply', input.file], { decisions: input.decisions ?? [] })
-    return { result: String(applied.summary) }
+    let decisions = input.decisions ?? []
+    let note = ''
+    const plan = await engine($, ['plan', input.file], { decisions })
+    const unmasks = (plan.unmasks ?? []) as string[]
+    if (unmasks.length) {
+      const columns = unmasks.join(', ')
+      let answer = ''
+      try {
+        answer = await $.ui.ask(
+          `deid-guard: Claude wants to send these columns to the model without masking: ${columns}. Allow?`,
+          { header: 'Unmask?', options: [KEEP_MASKED, SEND_UNMASKED] },
+        )
+      } catch {
+        // No one could answer: the columns stay masked.
+      }
+      if (answer !== SEND_UNMASKED) {
+        decisions = decisions.filter(d => !(d.action === 'keep' && unmasks.includes(d.column)))
+        note = `\n\nUnmasking ${columns} was not approved by the user, so those columns keep their default treatment.`
+      }
+    }
+    const applied = await engine($, ['apply', input.file], { decisions })
+    return { result: String(applied.summary) + note }
   }).catch(($, e, next) => ({ result: `deid-guard: apply failed: ${next.error?.message ?? 'unknown error'}`, isError: true }))
 
   on('prompt.mention', async ($, e, next) => {
-    if (touchesState(e.path)) return { deny: DENY_STATE }
-    if (!isDataFile(e.path) || isGeneratedPath(e.path)) return next(e)
-    return next({ ...e, path: await readPathFor($, e.path) })
+    const real = await realPathOf($, e.path)
+    if (touchesState(real)) return { deny: DENY_STATE }
+    if (!isDataFile(real) || isGeneratedPath(real)) return next(e)
+    return next({ ...e, path: await readPathFor($, real) })
   }).catch(($, e, next) => ({ deny: failure('the mentioned data file', next.error) }))
 
   // Every row the model reads: prompts, tool results, notes, hook output.

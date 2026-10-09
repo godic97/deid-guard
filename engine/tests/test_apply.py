@@ -90,6 +90,23 @@ class ApplyTest(unittest.TestCase):
         _, rows = read_csv(self.root / result["outputs"][0])
         self.assertEqual([r[0] for r in rows], ["PATIENT_NO_000002", "PATIENT_NO_000001"])
 
+    def test_dry_run_reports_unmasked_pending_columns_without_writing(self):
+        result = apply_decisions(self.store, self.root, self.path,
+                                 [{"column": "patient_no", "action": "keep"}, {"column": "진단", "action": "keep"}],
+                                 dry_run=True)
+        self.assertEqual(result["unmasks"], ["patient_no"])
+        self.assertFalse((self.root / ".deid" / "out").exists())
+
+    def test_sheet_names_cannot_escape_the_output_dir(self):
+        from tests.xlsx_fixture import write_xlsx
+        book = self.root / "book.xlsx"
+        write_xlsx(book, {"../../escape": [["a"], ["1"]], "ok": [["b"], ["2"]]})
+        result = self.apply(path=book)
+        out = (self.root / ".deid" / "out").resolve()
+        for rel in result["outputs"]:
+            self.assertTrue((self.root / rel).resolve().is_relative_to(out), rel)
+        self.assertEqual(len(set(result["outputs"])), 2)
+
     def test_unknown_column_is_an_error(self):
         with self.assertRaises(ApplyError):
             self.apply([{"column": "nope", "action": "keep"}])

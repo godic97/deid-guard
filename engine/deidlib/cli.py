@@ -58,7 +58,7 @@ def _resolve(root: Path, arg: str) -> Path:
 
 def run(argv) -> dict:
     ap = argparse.ArgumentParser(prog="deid")
-    ap.add_argument("command", choices=["ping", "guard", "scan", "apply", "scrub", "restore", "reveal", "status"])
+    ap.add_argument("command", choices=["ping", "guard", "scan", "plan", "apply", "scrub", "restore", "reveal", "status"])
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--root", default=".")
     args = ap.parse_args(argv)
@@ -73,6 +73,8 @@ def run(argv) -> dict:
             return guard(store, root, _resolve(root, args.arg))
         if args.command == "scan":
             return scan(store, root)
+        if args.command == "plan":
+            return apply_decisions(store, root, _resolve(root, args.arg), _stdin().get("decisions", []), dry_run=True)
         if args.command == "apply":
             return apply_decisions(store, root, _resolve(root, args.arg), _stdin().get("decisions", []))
         if args.command == "scrub":
