@@ -90,6 +90,14 @@ class ReadTest(unittest.TestCase):
         names = [t.name for t in read_tables(p)]
         self.assertEqual(names, ["data", "patients"])
 
+    def test_record_key_field_does_not_hide_the_id(self):
+        p = self.root / "a.json"
+        p.write_text(json.dumps({"P-1": {"_key": "x"}, "P-2": {"_key": "y"}}))
+        (t,) = read_tables(p)
+        ids = [r[t.columns.index(t.columns[0])] for r in t.rows]
+        self.assertEqual(ids, ["P-1", "P-2"])
+        self.assertEqual(len(set(t.columns)), len(t.columns))
+
     def test_jsonl(self):
         p = self.root / "a.jsonl"
         p.write_text('{"id": "a"}\n\n{"id": "b"}\n')

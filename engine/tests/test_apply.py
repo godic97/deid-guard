@@ -212,6 +212,19 @@ class GuardTest(unittest.TestCase):
         guard(self.store, self.root, p)
         self.assertIsNotNone(self.store.lookup("윤서하"))
 
+    def test_keeping_a_column_cannot_drop_json_field_masks(self):
+        import json as _json
+        names = ["김도윤", "이하준", "박서준", "최지호", "정유준", "강은우"]
+        p = self.root / "collide.json"
+        p.write_text(_json.dumps({"": [{"json": n} for n in names], "owner": {"성명": "윤서하"}}, ensure_ascii=False))
+        guard(self.store, self.root, p)
+        self.assertIsNotNone(self.store.lookup("윤서하"))
+        self.store.close()
+        self.store = Store(self.root)
+        from deidlib.apply import apply_decisions as _apply
+        _apply(self.store, self.root, p, [{"column": "json", "action": "keep"}])
+        self.assertIsNotNone(self.store.lookup("윤서하"))
+
     def test_personal_fields_in_non_tabular_json_are_masked(self):
         p = self.root / "one.json"
         p.write_text('{"name": "my-app", "환자": {"성명": "박지민", "연락처": "010-3333-4444", "patient_id": "H-2024-0012"}}')

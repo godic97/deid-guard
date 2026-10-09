@@ -112,9 +112,17 @@ def register_json_leaves(store: Store, fid: str, path: Path) -> int:
         pairs[value] = store.pseudonym(entity, norm_for(kind, value), raw=value)
 
     walk(data, "", False)
-    store.add_lookups(fid, "\x00json", pairs.items())
+    store.add_lookups(fid, JSON_FIELDS_KEY, pairs.items())
     store.commit()
     return len(pairs)
+
+
+JSON_FIELDS_KEY = "#json-fields"
+
+
+def mask_key(table: str, column: str) -> str:
+    """The masks of one column. A JSON list never equals JSON_FIELDS_KEY."""
+    return json.dumps([table, column], ensure_ascii=False)
 
 
 def _norm_col(name: str) -> str:
@@ -333,7 +341,7 @@ def register_masks(store: Store, fid: str, table: Table, col: Dict) -> None:
     kind, i = col["kind"], col["index"] - 1
     if col["status"] not in ("forced", "pending"):
         return
-    key = f"{table.name}\x00{col['name']}"
+    key = mask_key(table.name, col["name"])
     pairs = {}
     for r in table.rows:
         v = r[i]

@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 
 from .generalize import REDACTED, SUPPORTED, generalize
 from .profile import (MANDATORY, PENDING_KINDS, default_entity, file_id, fingerprint, load_tables,
-                      maskable, norm_for, profile_columns, rel_path)
+                      mask_key, maskable, norm_for, profile_columns, rel_path)
 from .scrub import Scrubber
 from .store import Store, entity_name
 from .tables import Table, write_table
@@ -124,7 +124,7 @@ def apply_decisions(store: Store, root: Path, path: Path, decisions: List[Dict],
     for t, plan in zip(tables, plans):
         for p in plan:
             i, kind, action = p["col"]["index"] - 1, p["kind"], p["action"]
-            key = f"{t.name}\x00{p['col']['name']}"
+            key = mask_key(t.name, p["col"]["name"])
             # Exactly the case the plugin's approval dialog covers: a column
             # that is pending now. Any other keep leaves old masks in place.
             if action == "keep" and p["col"]["status"] == "pending":

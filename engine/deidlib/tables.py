@@ -105,7 +105,11 @@ def _json_table(name: str, value) -> Optional[Table]:
     if isinstance(value, list) and len(value) >= 2 and all(isinstance(r, dict) for r in value):
         return _records_table(name, value)
     if isinstance(value, dict) and len(value) >= 2 and all(isinstance(v, dict) for v in value.values()):
-        return _records_table(name, [{"_key": k, **v} for k, v in value.items()])  # keyed by ID
+        # Keyed by ID. The ID column takes a name no record already uses.
+        id_col = "_key"
+        while any(id_col in v for v in value.values()):
+            id_col = "_" + id_col
+        return _records_table(name, [{id_col: k, **v} for k, v in value.items()])
     return None
 
 
