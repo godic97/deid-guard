@@ -76,13 +76,14 @@ const APPLY_SCHEMA = {
   required: ['file'],
 }
 
-let python = 'python3'
+let python: string | undefined
 let engineReady = true
 
 async function engine($: EngineInterface, args: string[], input?: unknown): Promise<EngineResult> {
   const root = await $.session.root()
   const init = input === undefined ? { timeoutMs: 600_000 } : { timeoutMs: 600_000, stdin: JSON.stringify(input) }
-  const ran = await $.process.run([python, `${$.plugin.root}/src/deid.py`, ...args, '--root', root], init)
+  const exe = python ?? `${$.plugin.root}/bin/python`
+  const ran = await $.process.run([exe, `${$.plugin.root}/src/deid.py`, ...args, '--root', root], init)
   let out: EngineResult
   try {
     out = JSON.parse(ran.stdout)
@@ -137,7 +138,10 @@ function failure(what: string, error: unknown): string {
 }
 
 export const register: Register = (on, options) => {
-  python = String(options.python ?? 'python3')
+  // bin/python runs $DEID_GUARD_PYTHON (default python3) in the engine's own environment; a userConfig
+  // option made every install print "1 userConfig option not yet set". A value set through /config
+  // before 0.4.1 still wins.
+  python = options.python ? String(options.python) : undefined
 
   on('session.start', async ($, e, next) => {
     await $.tool.register({
@@ -163,7 +167,7 @@ export const register: Register = (on, options) => {
     } catch (err) {
       engineReady = false
       $.ui.status('deid-guard: ENGINE UNAVAILABLE, nothing is scrubbed')
-      $.ui.toast(failure('data', err).replace('so it was not read ', '') + ` Check that "${python}" runs Python 3.9+.`, {
+      $.ui.toast(failure('data', err).replace('so it was not read ', '') + ` Check that "${python ?? '$DEID_GUARD_PYTHON (default python3)'}" runs Python 3.9+.`, {
         timeoutMs: 15_000,
       })
     }

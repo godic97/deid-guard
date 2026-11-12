@@ -67,11 +67,11 @@ git clone https://github.com/godic97/deid-guard.git
 claude --plugin-dir ./deid-guard
 ```
 
-To use another Python, change the `deid-guard.python` row in `/config` (default `python3`).
+To use another Python (default `python3`), set `DEID_GUARD_PYTHON`, for example in the `env` block of `~/.claude/settings.json`: `{"env": {"DEID_GUARD_PYTHON": "/usr/bin/python3.12"}}`.
 
 ## What deid-guard runs and sends
 
-- It runs one local program: `python3 <plugin>/src/deid.py`, started by the mod for each check.
+- It runs one local program: `<plugin>/src/deid.py`, through `<plugin>/bin/python`, which starts `$DEID_GUARD_PYTHON` or `python3`, started by the mod for each check.
 - It reads the data files Claude touches and writes only under `.deid/` in your project: the mapping database, profile cards and de-identified copies.
 - It makes no network requests and sends nothing anywhere. The only text that leaves your machine is what Claude Code already sends to the model, after deid-guard has scrubbed it.
 - It adds one tool (`mcp__deid-guard__apply`), two commands, a short system prompt section that explains the workflow to Claude, and a status line entry.

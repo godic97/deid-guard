@@ -1,7 +1,7 @@
 {
   "name": "deid-guard",
   "displayName": "deid-guard",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "De-identifies personal data in tabular files (CSV, TSV, XLSX, JSON) before anything reaches the model. Korean and English.",
   "author": {
     "name": "godic97"
@@ -15,13 +15,5 @@
     "de-identification",
     "korean",
     "data-analysis"
-  ],
-  "userConfig": {
-    "python": {
-      "type": "string",
-      "title": "Python",
-      "description": "Python 3.9+ executable that runs the de-identification engine",
-      "default": "python3"
-    }
-  }
+  ]
 }
